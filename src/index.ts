@@ -209,11 +209,11 @@ export function apply(ctx: Context, config: Config) {
   // 获取 token（仅尊重队列分配的 _forcedTokenIndex）
   let tokenTask: Promise<string> = null
   const getToken = async (session?: Session) => {
-    ctx.logger.debug(`getToken called, config type: ${ctx.config.type}`)
+    if (config.debugLog) ctx.logger.info(`getToken called, config type: ${ctx.config.type}`)
     const runtime = (session as any)?.runtime || ctx.runtime || {}
     const forcedIndex = runtime._forcedTokenIndex
     const context = createContextWithRuntime(ctx, { _forcedTokenIndex: forcedIndex })
-    ctx.logger.debug(`getToken: 使用 _forcedTokenIndex=${forcedIndex}`)
+    if (config.debugLog) ctx.logger.info(`getToken: 使用 _forcedTokenIndex=${forcedIndex}`)
     return login(context, ctx.config.email, ctx.config.password)
   }
 
@@ -272,15 +272,15 @@ export function apply(ctx: Context, config: Config) {
 
   async function generateImage(session: Session<'authority'>, options: any, input: string) {
     // 添加调试日志，检查session对象
-    ctx.logger.debug(`generateImage开始处理，sessionId=${session.id}，userId=${session.userId}`)
+    if (config.debugLog) ctx.logger.info(`generateImage开始处理，sessionId=${session.id}，userId=${session.userId}`)
 
     // 简化重画调度：不再基于策略延迟或切换索引，队列系统会分配 _forcedTokenIndex
 
     // 检查session是否包含runtime对象，这对于后续getToken调用很重要
     if ('runtime' in session) {
-      ctx.logger.debug(`session包含runtime对象: ${JSON.stringify(session.runtime)}`)
+      if (config.debugLog) ctx.logger.info(`session包含runtime对象: ${JSON.stringify(session.runtime)}`)
     } else {
-      ctx.logger.debug('session不包含runtime对象，将使用ctx默认runtime')
+      if (config.debugLog) ctx.logger.info('session不包含runtime对象，将使用ctx默认runtime')
     }
 
     if (config.defaultPromptSw) {
@@ -361,9 +361,9 @@ export function apply(ctx: Context, config: Config) {
     let token: string
     try {
       // 传入session对象以便获取token时使用其runtime
-      ctx.logger.debug('准备调用getToken获取token')
+      if (config.debugLog) ctx.logger.info('准备调用getToken获取token')
       token = await getToken(session)
-      ctx.logger.debug('成功获取token')
+      if (config.debugLog) ctx.logger.info('成功获取token')
     } catch (err) {
       ctx.logger.error(`获取token失败: ${err.message}`, err)
       if (err instanceof NetworkError) {
@@ -660,13 +660,15 @@ export function apply(ctx: Context, config: Config) {
             ctx.logger.info(`[Characters Debug] 最终 payload - characterPrompts: ${JSON.stringify(parameters.characterPrompts)}`)
           }
 
-          ctx.logger.debug(`NovelAI请求参数: ${JSON.stringify(payload, (key, value) => {
-            // 避免记录过长的base64字符串
-            if (key === 'image' && typeof value === 'string') {
-              return `[base64 string length: ${value.length}]`
-            }
-            return value
-          })}`)
+          if (config.debugLog) {
+            ctx.logger.info(`NovelAI请求参数: ${JSON.stringify(payload, (key, value) => {
+              // 避免记录过长的base64字符串
+              if (key === 'image' && typeof value === 'string') {
+                return `[base64 string length: ${value.length}]`
+              }
+              return value
+            })}`)
+          }
           return payload
         }
         case 'sd-webui': {
@@ -726,7 +728,7 @@ export function apply(ctx: Context, config: Config) {
             ? resolve(ctx.baseDir, config.workflowImage2Image)
             : resolve(__dirname, '../data/default-comfyui-i2i-wf.json')
           const workflow = image ? workflowImage2Image : workflowText2Image
-          ctx.logger.debug('workflow:', workflow)
+          if (config.debugLog) ctx.logger.info('workflow:', workflow)
           const prompt = JSON.parse(await readFile(workflow, 'utf8'))
 
           if (image) {
@@ -787,7 +789,7 @@ export function apply(ctx: Context, config: Config) {
               break
             }
           }
-          ctx.logger.debug('prompt:', prompt)
+          if (config.debugLog) ctx.logger.info('prompt:', prompt)
           return { prompt }
         }
       }
@@ -928,28 +930,15 @@ export function apply(ctx: Context, config: Config) {
             // 如果启用了禁言功能，则禁言用户
             if (config.muteOnReviewFailed && session.guildId && session.userId) {
               try {
-                // 将秒转换为毫秒，QQ平台的禁言API需要毫秒单位
+                // 将秒转换为毫秒，Koishi的muteGuildMember API通常需要毫秒单位
                 const muteTimeMs = config.muteTime * 1000
-                ctx.logger.info(`禁言用户 ${session.username || session.userId} ${config.muteTime}秒 (${muteTimeMs}毫秒)`)
-                // 针对QQ平台的禁言API调用
-                if (session.platform === 'qq') {
-                  // 使用QQ平台特定的禁言API，传入毫秒单位的时间
-                  try {
-                    await session.bot.muteGuildMember(session.guildId, session.userId, muteTimeMs)
-                    ctx.logger.info('使用标准API禁言成功')
-                  } catch (qqMuteError) {
-                    ctx.logger.error(`使用标准API禁言失败: ${qqMuteError}`)
-                    // 尝试使用内部API
-                    try {
-                      await session.bot.internal.muteGuildMember?.(session.guildId, session.userId, muteTimeMs)
-                      ctx.logger.info('使用内部API禁言成功')
-                    } catch (internalMuteError) {
-                      ctx.logger.error(`使用内部API禁言失败: ${internalMuteError}`)
-                    }
-                  }
-                } else {
-                  // 使用通用禁言API，其他平台可能使用秒为单位
-                  await session.bot.muteGuildMember(session.guildId, session.userId, config.muteTime)
+                if (config.debugLog) ctx.logger.info(`禁言用户 ${session.username || session.userId} ${config.muteTime}秒 (${muteTimeMs}毫秒)`)
+
+                try {
+                  await session.bot.muteGuildMember(session.guildId, session.userId, muteTimeMs)
+                  if (config.debugLog) ctx.logger.info('禁言成功')
+                } catch (err) {
+                  ctx.logger.error(`禁言失败: ${err}`)
                 }
                 return await session.send(h('at', { id: session.userId }) + ' ' + session.text('commands.novelai.messages.image-review-failed-muted', [config.muteTime]))
               } catch (muteError) {
