@@ -1,0 +1,61 @@
+/**
+ * 自定义样式
+ */
+
+:root {
+  --vp-c-brand-1: #3451b2;
+  --vp-c-brand-2: #3a5ccc;
+  --vp-c-brand-3: #4969e6;
+}
+
+.dark {
+  --vp-c-brand-1: #a8b1ff;
+  --vp-c-brand-2: #8f9bff;
+  --vp-c-brand-3: #7584ff;
+}
+
+/* 代码块增强 */
+.vp-doc div[class*='language-'] {
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+/* 表格样式 */
+.vp-doc table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.vp-doc th {
+  background-color: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+/* 提示框样式增强 */
+.vp-doc .tip,
+.vp-doc .warning,
+.vp-doc .danger {
+  border-radius: 8px;
+  padding: 16px;
+}
+
+/* 首页特性卡片 */
+.VPFeature {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.VPFeature:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* 代码示例突出显示 */
+.vp-doc code {
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+/* 自定义容器 */
+.custom-block {
+  margin: 16px 0;
+}
+

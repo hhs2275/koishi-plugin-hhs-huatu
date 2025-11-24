@@ -1,0 +1,14 @@
+{
+  "name": "hhs-huatu-docs",
+  "version": "1.0.0",
+  "description": "Documentation for koishi-plugin-hhs-huatu",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.0.0-rc.40"
+  }
+}
+
