@@ -548,7 +548,7 @@ export const Config = Schema.intersect([
     requestTimeout: Schema.number().role('time').description('当请求超过这个时间时会中止并提示超时。').default(Time.minute),
     recallTimeout: Schema.number().role('time').description('图片发送后自动撤回的时间 (设置为 0 以禁用此功能)。').default(0),
     maxConcurrency: Schema.number().description('单个频道下的最大并发数量 (设置为 0 以禁用此功能)。').default(0),
-    debugLog: Schema.boolean().description('是否输出调试日志（包括 Characters 功能和图片审核的详细日志）。').default(false),
+    debugLog: Schema.boolean().description('是否开启调试模式。开启后，将输出包含 Characters 功能、图片审核等功能的详细调试日志。').default(false),
   }).description('高级设置'),
 
   Schema.object({
@@ -588,7 +588,7 @@ export const Config = Schema.intersect([
       Schema.const('ignore').description('忽略错误'),
     ]).description('审核失败时的处理方式').default('ignore'),
     muteOnReviewFailed: Schema.boolean().description('审核未通过时是否禁言用户').default(false),
-    muteTime: Schema.number().description('禁言时长（毫秒）').default(60000),
+    muteTime: Schema.number().description('禁言时长（秒）').default(60),
     enabledGroups: Schema.array(Schema.string()).description('启用图片审核的群ID列表，为空则在所有群启用').default([]),
     imageAudit: Schema.object({
       engine: Schema.union([

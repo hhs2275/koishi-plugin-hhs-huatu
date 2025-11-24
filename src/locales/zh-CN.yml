@@ -65,7 +65,7 @@ commands:
       download-error: 图片解析失败。
       unknown-error: 发生未知错误。
       image-review-failed: 图片审核未通过，可能包含不适内容，请尝试修改提示词后重试。
-      image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}毫秒。
+      image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}秒
       image-review-error: 图片审核过程中出现错误，请稍后重试。
       response-error: 发生未知错误 ({0})。
       empty-response: 服务器返回了空白图片，请稍后重试。
@@ -116,7 +116,6 @@ commands:
       download-error: 图片解析失败。
       unknown-error: 发生未知错误。
       image-review-failed: 图片审核未通过，可能包含不适内容，请尝试修改提示词后重试。
-      image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}秒。
       image-review-error: 图片审核过程中出现错误，请稍后重试。
 
   novelai.redraw:

@@ -202,7 +202,7 @@ export async function login(ctx: Context, email: string, password: string): Prom
     error: console.error,
   }
 
-  logger.debug('login函数被调用，ctx.type=' + ctx.config.type)
+  if (ctx.config.debugLog) logger.info('login函数被调用，ctx.type=' + ctx.config.type)
 
   if (ctx.config.type === 'token') {
     // 多 token：只尊重队列/调用方分配的强制索引
@@ -215,7 +215,7 @@ export async function login(ctx: Context, email: string, password: string): Prom
           logger.warn(`强制指定的 token ${forcedTokenIndex} 无效`)
           throw new NetworkError('.all-tokens-invalid')
         }
-        logger.debug(`login: 使用强制指定的 token 索引 ${forcedTokenIndex}`)
+        if (ctx.config.debugLog) logger.info(`login: 使用强制指定的 token 索引 ${forcedTokenIndex}`)
         return token
       }
       // 未提供强制索引时，默认使用第一个 token，并记录警告
@@ -226,7 +226,7 @@ export async function login(ctx: Context, email: string, password: string): Prom
       if (!ctx.config.token.trim()) {
         throw new NetworkError('.no-token-provided')
       }
-      logger.debug('login: 使用单个 token')
+      if (ctx.config.debugLog) logger.info('login: 使用单个 token')
       return ctx.config.token
     } else {
       throw new NetworkError('.no-token-provided')
