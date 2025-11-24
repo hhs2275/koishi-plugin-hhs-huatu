@@ -1,0 +1,168 @@
+commands:
+  novelai:
+    description: AI 画图
+    usage: |-
+      输入用逗号隔开的英文标签，例如 Mr.Quin, dark sword, red eyes。
+      查找标签可以使用 Danbooru。
+      快来给仓库点个 star 吧：https://github.com/koishijs/novelai-bot
+      
+      图片审核功能现在支持群聊过滤，可以在配置中设置只在特定群开启审核。
+
+    shortcuts:
+      imagine: 画画|约稿
+      enhance: 增强
+
+    options:
+      enhance: 图片增强模式
+      model: 设定生成模型
+      resolution: |-
+        设定图片尺寸
+        portrait: 竖图 (832x1216)
+        square: 方图 (1024x1024)
+        landscape: 横图 (1216x832)
+      override: 禁用默认标签
+      sampler: 设置采样器
+      seed: 设置随机种子
+      steps: 设置迭代步数
+      scale: 设置对输入的服从度
+      rescale: 输入服从度调整规模（0-1）
+      strength: 图片修改幅度
+      noise: 图片噪声强度
+      hiresFix: 启用高分辨率修复
+      undesired: 排除标签
+      noTranslator: 禁用自动翻译
+      iterations: 设置绘制次数
+      batch: 设置绘制批次大小
+      chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。
+      smea: 启用 SMEA
+      smeaDyn: 启用 DYN
+      scheduler: 设置调度器
+      decrisper: 启用动态阈值
+
+    messages:
+      queue-position: 当前队列中有 {0} 个任务，你有 {1} 个任务正在处理
+      queue-full: 当前等待任务已达到上限({0})，请稍后再试
+      exceed-user-queue: 你的任务数量已达到上限 ({0})，进入cd
+      penalty-cooldown: 由于超出队列上限，需要等待 {0} 秒后才能继续使用
+      redraw-queued: 已将 {0} 张重画任务加入队列 (总队列：{1} | 你的队列：{2})
+      exceed-max-iteration: 超过最大绘制次数。
+      expect-prompt: 请输入标签。
+      expect-image: 请输入图片。
+      too-many-images: 过多的图片。
+      invalid-content: 输入中含有无效内容。
+      latin-only: 只接受英文输入。
+      too-many-words: 输入的单词数量过多。
+      forbidden-word: 输入含有违禁词。
+      concurrent-jobs: 等会再约稿吧，我已经忙不过来了……
+      waiting: 当前总队列：{0} 个任务 | 你的队列：{1} 个任务
+      pending: 当前总队列：{0} 个任务 | 你的队列：{1} 个任务
+      exceed-redraw-limit: 超出最大重画数量限制 ({0})
+      invalid-size: 增强功能仅适用于被生成的图片。普通的 img2img 请直接使用「约稿」而不是「增强」。
+      invalid-resolution: 非法的图片尺寸。宽高必须都为 64 的倍数。
+      custom-resolution-unsupported: 不支持自定义图片尺寸。
+      file-too-large: 文件体积过大。
+      unsupported-file-type: 不支持的文件格式
+      download-error: 图片解析失败。
+      unknown-error: 发生未知错误。
+      image-review-failed: 图片审核未通过，可能包含不适内容，请尝试修改提示词后重试。
+      image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}毫秒。
+      image-review-error: 图片审核过程中出现错误，请稍后重试。
+      response-error: 发生未知错误 ({0})。
+      empty-response: 服务器返回了空白图片，请稍后重试。
+      request-failed: 请求失败 ({0})，请稍后重试。
+      request-timeout: 请求超时。
+      invalid-password: 邮箱或密码错误。
+      invalid-token: 令牌无效或已过期，请联系管理员。
+      all-tokens-invalid: 所有令牌均无效或已过期，请联系管理员更新令牌。
+      unauthorized: 令牌未授权，可能需要续费，请联系管理员。
+      daily-limit-reached: 您今日的使用次数已达上限({0}次)，请充值会员或者明天再来。
+      member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
+      membership-expired: 您的会员已过期，已恢复为普通用户权限。
+      membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
+      non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
+      cooldown: 绘图CD中，请等待{0}秒后再试。
+  
+  novelai.reset-queue:
+    description: 重置用户队列状态
+    usage: 重置指定用户的队列计数和CD
+    options:
+      user: 目标用户ID
+    messages:
+      default: 已重置用户 {0} 的队列状态
+      invalid-user: 无效的用户ID
+      permission-denied: 权限不足
+
+  novelai.queue:
+    description: 查询NAI绘图队列状态
+    usage: 查看当前队列中的任务数量和你的任务数量
+
+  novelai.upscale:
+    description: AI 放大图片
+
+    shortcuts:
+      upscale: 放大
+
+    options:
+      scale: 设置放大倍数
+      resolution: 设定放大尺寸
+      crop: 是否裁剪以适应尺寸
+      upscaler: 设置放大模型
+      upscaler2: 设置放大模型 2
+      upscaler2visibility: 设置放大模型 2 的可见度
+      upscaleFirst: 先放大再执行面部修复
+
+    messages:
+      expect-image: 请输入图片。
+      download-error: 图片解析失败。
+      unknown-error: 发生未知错误。
+      image-review-failed: 图片审核未通过，可能包含不适内容，请尝试修改提示词后重试。
+      image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}秒。
+      image-review-error: 图片审核过程中出现错误，请稍后重试。
+
+  novelai.redraw:
+    description: 重画
+    usage: |-
+      修改novelai-bot插件新增的<redraw>标签，再次执行命令，可以重画上一次的图片。
+      
+  novelai.member:
+    description: 会员系统
+    usage: |-
+      查询或设置会员状态，管理员可以设置其他用户的会员状态。
+      示例：
+      会员  查询自己的会员状态
+      会员 -u QQ号 （查询指定QQ号用户的会员状态）
+      会员 -d 30 （自己设置30天会员）
+      会员 -u QQ号 -d 30 （指定QQ号用户设置30天会员）
+      会员 -c （取消自己的会员资格）
+      会员 -u QQ号 -c （取消指定QQ号用户的会员资格）
+      会员 -l （查询会员列表）
+      会员 -l -p 2 （查询会员列表，第2页）
+      会员 -l -s 20 （查询会员列表，每页20条，按会员等级排序）
+    messages:
+      queue-position: 当前总队列：{0} 个任务 | 你的队列：{1} 个任务
+      queue-full: 当前等待任务已达到上限({0}),请稍后再试
+      exceed-user-queue: 你的任务数量已达到上限 ({0})，进入cd
+      penalty-cooldown: 由于超出队列上限，需要等待 {0} 秒后才能继续使用
+      redraw-queued: 已将 {0} 张重画任务加入队列 (总队列：{1} | 你的队列：{2})
+      exceed-max-iteration: 超过最大绘制次数。
+      expect-prompt: 请输入标签。
+      expect-image: 请输入图片。
+      too-many-images: 过多的图片。
+      invalid-content: 输入中含有无效内容。
+      latin-only: 只接受英文输入。
+      too-many-words: 输入的单词数量过多。
+      forbidden-word: 输入含有违禁词。
+      unknown-error: 发生未知错误。
+      invalid-token: 令牌无效或已过期，请联系管理员。
+      all-tokens-invalid: 所有令牌均无效或已过期，请联系管理员更新令牌。
+      unauthorized: 令牌未授权，可能需要续费，请联系管理员。
+      daily-limit-reached: 您今日的使用次数已达上限({0}次)，请充值会员或者明天再来。
+      member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
+      membership-expired: 您的会员已过期，已恢复为普通用户权限。
+      membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
+      non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
+      cooldown: 绘图CD中，请等待{0}秒后再试。
+      response-error: 发生未知错误 ({0})。
+      request-timeout: 请求超时。
+      request-failed: 请求失败 ({0})，请稍后重试。
+      empty-response: 服务器返回了空白图片，请稍后重试。

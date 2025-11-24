@@ -1,0 +1,87 @@
+{
+  "name": "koishi-plugin-hhs-huatu",
+  "description": "Generate images by diffusion models",
+  "version": "0.3.6",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist",
+    "data"
+  ],
+  "browser": {
+    "image-size": false,
+    "libsodium-wrappers": false
+  },
+  "author": "Ninzore <cillerpro@gmail.com>",
+  "contributors": [
+    "Shigma <shigma10826@gmail.com>",
+    {
+      "name": "Maiko Tan",
+      "email": "maiko.tan.coding@gmail.com"
+    },
+    "Ninzore <cillerpro@gmail.com>"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/koishijs/koishi-plugin-novelai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/koishijs/koishi-plugin-novelai/issues"
+  },
+  "homepage": "https://bot.novelai.dev",
+  "scripts": {
+    "build": "atsc -b",
+    "docs:dev": "vitepress dev docs --open",
+    "docs:build": "vitepress build docs",
+    "docs:serve": "vitepress serve docs"
+  },
+  "koishi": {
+    "browser": true,
+    "service": {
+      "optional": [
+        "translator"
+      ]
+    },
+    "description": {
+      "en": "Image Generation. Support [NovelAI](https://novelai.net/), Stable Diffusion and more. Support v4.5 full and characters feature, director tools feature.",
+      "zh": "对[novelai-bot](https://bot.novelai.dev/)插件二次开发，已经支持v4.5full和characters功能，导演工具功能，0.3.6-alpha.2版本多token改用token池（其他策略删了）",
+      "zh-TW": "基於[novelai-bot](https://bot.novelai.dev/)插件二次開發，目前已支持v4.5模型，characters，导演工具功能",
+      "fr": "Génération d'images. Développement secondaire du plugin [novelai-bot](https://bot.novelai.dev/), prend désormais en charge la v4.5 et les fonctionnalités characters,",
+      "ja": "画像生成。[novelai-bot](https://bot.novelai.dev/)プラグインの二次開発を行い、v4.5モデル，characters，导演工具機能に対応しました。"
+    }
+  },
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin",
+    "novelai",
+    "ai",
+    "paint",
+    "image",
+    "generate"
+  ],
+  "peerDependencies": {
+    "koishi": "^4.18.7"
+  },
+  "devDependencies": {
+    "@cordisjs/vitepress": "^3.3.2",
+    "@koishijs/plugin-help": "^2.4.5",
+    "@koishijs/translator": "^1.1.1",
+    "@types/adm-zip": "^0.5.7",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
+    "@types/node": "^22.13.8",
+    "atsc": "^1.2.2",
+    "koishi": "^4.18.7",
+    "sass": "^1.85.1",
+    "typescript": "^5.8.2",
+    "vitepress": "1.0.0-rc.40"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "cos-nodejs-sdk-v5": "^2.14.7",
+    "image-size": "^1.2.0",
+    "libsodium-wrappers-sumo": "^0.7.15"
+  }
+}
