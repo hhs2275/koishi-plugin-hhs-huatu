@@ -20,15 +20,17 @@
       "name": "Maiko Tan",
       "email": "maiko.tan.coding@gmail.com"
     },
-    "Ninzore <cillerpro@gmail.com>"
+    "Ninzore <cillerpro@gmail.com>",
+    "hhs2275 <2257438102@qq.com>",
+    "miaomiao-art123 <3481270671@qq.com>"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/koishijs/koishi-plugin-novelai.git"
+    "url": "git+https://github.com/hhs2275/koishi-plugin-hhs-huatu.git"
   },
   "bugs": {
-    "url": "https://github.com/koishijs/koishi-plugin-novelai/issues"
+    "url": "https://github.com/hhs2275/koishi-plugin-hhs-huatu/issues"
   },
   "homepage": "https://bot.novelai.dev",
   "scripts": {
