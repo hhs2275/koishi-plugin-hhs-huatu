@@ -451,3 +451,102 @@ export function createContextWithRuntime(ctx: Context, runtime: any): Context {
 
   return newCtx as Context
 }
+/**
+ * 对齐图片尺寸到64的倍数 (NovelAI API要求)
+ * @param width 原始宽度
+ * @param height 原始高度
+ * @returns 对齐后的尺寸
+ */
+export function alignTo64(width: number, height: number): { width: number; height: number } {
+  const alignedWidth = Math.ceil(width / 64) * 64
+  const alignedHeight = Math.ceil(height / 64) * 64
+  return { width: alignedWidth, height: alignedHeight }
+}
+
+/**
+ * 预处理原图：对齐尺寸并生成暗图
+ * @param imageData 原始图片数据
+ * @returns { cleanBuffer: 对齐后的原图, darkBuffer: 调暗的图片, width: 对齐后宽度, height: 对齐后高度 }
+ */
+export async function preprocessInpaintImage(imageData: ImageData): Promise<{
+  cleanBuffer: Buffer
+  darkBuffer: Buffer
+  width: number
+  height: number
+}> {
+  const sharp = await import('sharp')
+  const buffer = Buffer.from(imageData.buffer)
+
+  // 获取原始尺寸
+  const metadata = await sharp.default(buffer).metadata()
+  const originalWidth = metadata.width
+  const originalHeight = metadata.height
+
+  // 对齐到64的倍数
+  const { width, height } = alignTo64(originalWidth, originalHeight)
+
+  // 生成对齐后的干净原图 (用于发送给API)
+  const cleanBuffer = await sharp.default(buffer)
+    .resize(width, height, {
+      fit: 'fill',
+      kernel: 'lanczos3'
+    })
+    .png()
+    .toBuffer()
+
+  // 生成暗图 (亮度降低到0.4, 用于用户涂鸦)
+  const darkBuffer = await sharp.default(cleanBuffer)
+    .modulate({ brightness: 0.4 })
+    .png()
+    .toBuffer()
+
+  return { cleanBuffer, darkBuffer, width, height }
+}
+
+/**
+ * 防伪影蒙版提取算法
+ * 使用sharp操作链: grayscale -> threshold -> blur -> threshold
+ * 这样可以防止重画边缘出现接缝和伪影
+ * 
+ * @param scribbledImageData 用户涂鸦后的图片数据
+ * @param targetWidth 目标宽度(必须与原图对齐后的尺寸一致)
+ * @param targetHeight 目标高度(必须与原图对齐后的尺寸一致)
+ * @returns 蒙版Buffer的base64字符串(不含data:前缀)
+ */
+export async function extractInpaintMask(
+  scribbledImageData: ImageData,
+  targetWidth: number,
+  targetHeight: number
+): Promise<string> {
+  const sharp = await import('sharp')
+  const buffer = Buffer.from(scribbledImageData.buffer)
+
+  // 防伪影处理管线 (Anti-Artifact Pipeline)
+  const maskBuffer = await sharp.default(buffer)
+    // 1. 确保尺寸一致
+    .resize(targetWidth, targetHeight, { fit: 'fill' })
+    // 2. 转为灰度，去除颜色干扰
+    .grayscale()
+    // 3. 初步二值化，提取白色涂鸦区域
+    .threshold(150)
+    // 4. ⭐ 关键步骤：高斯模糊，模拟形态学膨胀，向外扩展3-5像素
+    .blur(3.0)
+    // 5. 二次二值化，将模糊后的灰色边缘硬化为纯白
+    .threshold(50)
+    // 6. 输出PNG格式
+    .toFormat('png')
+    .toBuffer()
+
+  return maskBuffer.toString('base64')
+}
+
+/**
+ * 将Buffer转换为Data URL格式
+ * @param buffer 图片Buffer
+ * @param mimeType MIME类型
+ * @returns Data URL字符串
+ */
+export function bufferToDataURL(buffer: Buffer, mimeType = 'image/png'): string {
+  const base64 = buffer.toString('base64')
+  return `data:${mimeType};base64,${base64}`
+}
