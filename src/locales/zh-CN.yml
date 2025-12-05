@@ -34,10 +34,12 @@ commands:
       iterations: 设置绘制次数
       batch: 设置绘制批次大小
       chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。
+      inpaint: 启用局部重绘模式
       smea: 启用 SMEA
       smeaDyn: 启用 DYN
       scheduler: 设置调度器
       decrisper: 启用动态阈值
+
 
     messages:
       queue-position: 当前队列中有 {0} 个任务，你有 {1} 个任务正在处理
@@ -81,6 +83,11 @@ commands:
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
+      inpaint-step1: 已将原图调暗(尺寸已对齐到64倍数)，请保存下图，使用【白色画笔】涂抹你想要重画的区域，然后将涂鸦后的图片发回给我。
+      inpaint-step2: 请发送涂好白色区域的图片
+      inpaint-timeout: 等待超时(60秒)，局部重绘已取消。
+      inpaint-no-mask: 未检测到图片，请重新发送涂好白色区域的图片。
+      inpaint-error: 局部重绘处理失败，请重试。
   
   novelai.reset-queue:
     description: 重置用户队列状态

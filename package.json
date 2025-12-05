@@ -84,6 +84,7 @@
     "adm-zip": "^0.5.16",
     "cos-nodejs-sdk-v5": "^2.14.7",
     "image-size": "^1.2.0",
-    "libsodium-wrappers-sumo": "^0.7.15"
+    "libsodium-wrappers-sumo": "^0.7.15",
+    "sharp": "^0.33.0"
   }
 }

@@ -1,7 +1,7 @@
 import { Computed, Context, Dict, h, Logger, omit, Quester, Session, SessionError, trimSlash } from 'koishi'
 import { Config, modelMap, models, orientMap, parseInput, sampler, upscalers, scheduler } from './config'
 import { ImageData, NovelAI, StableDiffusionWebUI, UserData, DirectorTools } from './types'
-import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters } from './utils'
+import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, preprocessInpaintImage, extractInpaintMask, bufferToDataURL } from './utils'
 import { } from '@koishijs/translator'
 import { } from '@koishijs/plugin-help'
 import AdmZip from 'adm-zip'
@@ -190,6 +190,15 @@ export function apply(ctx: Context, config: Config) {
   const tasks: Dict<Set<string>> = Object.create(null)
   const globalTasks = new Set<string>()
 
+  // Inpaint会话状态存储 (用于多用户隔离)
+  interface InpaintSession {
+    cleanBuffer: Buffer  // 对齐后的原图
+    width: number        // 对齐后的宽度
+    height: number       // 对齐后的高度
+    prompt: string       // 用户提示词
+  }
+  const inpaintSessions = new Map<string, InpaintSession>()
+
   // 稍后会在 generateImage 函数定义后创建队列系统实例
   let queueSystem: QueueSystem
 
@@ -327,6 +336,10 @@ export function apply(ctx: Context, config: Config) {
         return session.text('commands.novelai.messages.expect-image')
       }
 
+      if (options.inpaint && !imgUrl) {
+        return session.text('commands.novelai.messages.expect-image')
+      }
+
       if (!input.trim() && !config.basePrompt) {
         return session.text('commands.novelai.messages.expect-prompt')
       }
@@ -397,6 +410,63 @@ export function apply(ctx: Context, config: Config) {
         }
         ctx.logger.error(err)
         return session.text('commands.novelai.messages.download-error')
+      }
+
+      // 局部重绘模式
+      if (options.inpaint) {
+        try {
+          // 1. 预处理原图: 对齐尺寸并生成暗图
+          const { cleanBuffer, darkBuffer, width, height } = await preprocessInpaintImage(image)
+
+          // 2. 发送暗图给用户,提示涂鸦
+          const darkDataUrl = bufferToDataURL(darkBuffer, 'image/png')
+          await session.send(h('', [
+            h.text(session.text('commands.novelai.messages.inpaint-step1')),
+            h.image(darkDataUrl)
+          ]))
+
+          if (config.debugLog) {
+            ctx.logger.info(`[Inpaint] 已发送暗图,对齐后尺寸: ${width}x${height}`)
+          }
+
+          // 3. 等待用户发送涂鸦后的图片 (60秒超时)
+          const scribbledImgUrl = await session.prompt(60000)
+          if (!scribbledImgUrl) {
+            return session.text('commands.novelai.messages.inpaint-timeout')
+          }
+
+          // 4. 解析用户发送的图片URL
+          let maskUrl: string
+          h.transform(h.parse(scribbledImgUrl), {
+            img(attrs) {
+              maskUrl = attrs.src
+              return ''
+            },
+          })
+
+          if (!maskUrl) {
+            return session.text('commands.novelai.messages.inpaint-no-mask')
+          }
+
+          // 5. 下载涂鸦后的图片
+          const scribbledImageData = await download(ctx, maskUrl)
+
+          // 6. 使用防伪影算法提取蒙版
+          const maskBase64 = await extractInpaintMask(scribbledImageData, width, height)
+
+          // 7. 保存到options中用于后续payload生成
+          options._maskBase64 = maskBase64
+          options._cleanBuffer = cleanBuffer
+          options._alignedWidth = width
+          options._alignedHeight = height
+
+          if (config.debugLog) {
+            ctx.logger.info(`[Inpaint] 成功提取蒙版,大小: ${maskBase64.length} 字节`)
+          }
+        } catch (err) {
+          ctx.logger.error(err)
+          return session.text('commands.novelai.messages.inpaint-error')
+        }
       }
 
       if (options.enhance) {
@@ -491,7 +561,7 @@ export function apply(ctx: Context, config: Config) {
           parameters.dynamic_thresholding = options.decrisper ?? config.decrisper
           parameters.qualityToggle = true
           parameters.ucPreset = 0
-          parameters.add_original_image = true
+          parameters.add_original_image = false
           parameters.legacy = false
           parameters.cfg_rescale = options.rescale ?? session.resolve(config.rescale)
 
@@ -511,7 +581,7 @@ export function apply(ctx: Context, config: Config) {
               delete parameters.noise_schedule
             }
           } else if (isNAI4) {
-            parameters.add_original_image = true // unknown
+            parameters.add_original_image = false // unknown
             parameters.noise_schedule = options.scheduler ?? config.scheduler
             parameters.characterPrompts = [] satisfies NovelAI.V4CharacterPrompt[]
             parameters.controlnet_strength = 1 // unknown
@@ -628,16 +698,41 @@ export function apply(ctx: Context, config: Config) {
 
           // 构建最终payload
           let action = 'generate'
+          let inpaintModel = model
 
           // 处理图片上传，参考nai-plugin-main的实现
           if (image) {
-            action = 'img2img'
-            // 确保image.base64不包含前缀
-            if (image.base64.includes('base64,')) {
-              const base64Data = image.base64.split('base64,')[1]
-              parameters.image = base64Data
+            // 检查是否为局部重绘模式
+            if (options.inpaint && options._maskBase64) {
+              action = 'infill'
+              // 将模型名改为inpainting版本
+              if (model.includes('-inpainting')) {
+                inpaintModel = model
+              } else {
+                inpaintModel = `${model}-inpainting`
+              }
+
+              if (config.debugLog) {
+                ctx.logger.info(`[Inpaint] 使用局部重绘模式: action=${action}, model=${inpaintModel}`)
+              }
             } else {
-              parameters.image = image.base64
+              action = 'img2img'
+            }
+
+            // 处理图片数据
+            if (options.inpaint && options._cleanBuffer) {
+              // 局部重绘模式:使用对齐后的cleanBuffer
+              parameters.image = options._cleanBuffer.toString('base64')
+              parameters.width = options._alignedWidth
+              parameters.height = options._alignedHeight
+            } else {
+              // 普通img2img:使用原图
+              if (image.base64.includes('base64,')) {
+                const base64Data = image.base64.split('base64,')[1]
+                parameters.image = base64Data
+              } else {
+                parameters.image = image.base64
+              }
             }
 
             // 添加必要的img2img参数
@@ -648,9 +743,18 @@ export function apply(ctx: Context, config: Config) {
             parameters.add_original_image = false // 不需要在结果中添加原始图像
             parameters.extra_noise_seed = parameters.seed // 使用相同的种子作为额外噪声种子
 
+            // 局部重绘特有参数
+            if (options.inpaint && options._maskBase64) {
+              parameters.mask = options._maskBase64
+              parameters.color_correct = false // 默认关闭颜色校正
+
+              if (config.debugLog) {
+                ctx.logger.info(`[Inpaint] 添加遮罩参数，mask大小: ${parameters.mask.length} 字节`)
+              }
+            }
           }
 
-          const payload = { model, input: prompt, action, parameters: omit(parameters, ['prompt']) }
+          const payload = { model: inpaintModel, input: prompt, action, parameters: omit(parameters, ['prompt']) }
 
           // 添加 Characters 相关的详细日志（受配置控制）
           if (config.debugLog && parameters.v4_prompt) {
@@ -1074,6 +1178,7 @@ export function apply(ctx: Context, config: Config) {
     .option('iterations', '-i <iterations:posint>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('batch', '-b <batch:option>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('chars', '-K <chars>')
+    .option('inpaint', '-M', { hidden: some(restricted, thirdParty) })
     .option('ignoreSpace', '-I', { hidden: true })
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
