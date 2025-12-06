@@ -4,7 +4,7 @@ commands:
     usage: |-
       Enter "novelai" with English prompt or tags, e.g. a girl in the forest, blonde hair, red eyes, white dress, etc.
       You can also use comma separated tags like those on Danbooru.
-      Star it: https://github.com/koishijs/novelai-bot
+      Star it: https://github.com/hhs2275/koishi-plugin-hhs-huatu
     options:
       enhance: Image Enhance Mode
       model: Set Model for Generation

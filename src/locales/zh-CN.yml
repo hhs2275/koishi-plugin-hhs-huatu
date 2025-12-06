@@ -4,7 +4,7 @@ commands:
     usage: |-
       输入用逗号隔开的英文标签，例如 Mr.Quin, dark sword, red eyes。
       查找标签可以使用 Danbooru。
-      快来给仓库点个 star 吧：https://github.com/koishijs/novelai-bot
+      快来给仓库点个 star 吧：https://github.com/hhs2275/koishi-plugin-hhs-huatu
       
       图片审核功能现在支持群聊过滤，可以在配置中设置只在特定群开启审核。
 
@@ -83,10 +83,10 @@ commands:
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
-      inpaint-step1: 已将原图调暗(尺寸已对齐到64倍数)，请保存下图，使用【白色画笔】涂抹你想要重画的区域，然后将涂鸦后的图片发回给我。
+      inpaint-step1: 已将原图调暗，请使用画图工具在需要重绘的区域涂上白色，然后在120秒内发送回来。
       inpaint-step2: 请发送涂好白色区域的图片
-      inpaint-timeout: 等待超时(60秒)，局部重绘已取消。
-      inpaint-no-mask: 未检测到图片，请重新发送涂好白色区域的图片。
+      inpaint-timeout: 等待超时，局部重绘已取消。
+      inpaint-no-mask: 未检测到图片，局部重绘已取消。
       inpaint-error: 局部重绘处理失败，请重试。
   
   novelai.reset-queue:

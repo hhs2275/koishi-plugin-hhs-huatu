@@ -451,102 +451,249 @@ export function createContextWithRuntime(ctx: Context, runtime: any): Context {
 
   return newCtx as Context
 }
+
 /**
- * 对齐图片尺寸到64的倍数 (NovelAI API要求)
- * @param width 原始宽度
- * @param height 原始高度
- * @returns 对齐后的尺寸
+ * 将尺寸对齐到64的倍数（NovelAI API要求）
  */
-export function alignTo64(width: number, height: number): { width: number; height: number } {
-  const alignedWidth = Math.ceil(width / 64) * 64
-  const alignedHeight = Math.ceil(height / 64) * 64
-  return { width: alignedWidth, height: alignedHeight }
+export function alignTo64(size: number): number {
+  return Math.ceil(size / 64) * 64
 }
 
 /**
- * 预处理原图：对齐尺寸并生成暗图
+ * 将图片调暗并对齐尺寸(用于局部重绘的交互式流程)
  * @param imageData 原始图片数据
- * @returns { cleanBuffer: 对齐后的原图, darkBuffer: 调暗的图片, width: 对齐后宽度, height: 对齐后高度 }
+ * @param factor 调暗系数(0-1,默认0.5)
+ * @returns 调暗后的图片Data URL和对齐后的尺寸
  */
-export async function preprocessInpaintImage(imageData: ImageData): Promise<{
-  cleanBuffer: Buffer
-  darkBuffer: Buffer
-  width: number
-  height: number
+export async function darkenImage(imageData: ImageData, factor = 0.5): Promise<{
+  dataUrl: string
+  alignedWidth: number
+  alignedHeight: number
+  originalBuffer: Buffer
 }> {
   const sharp = await import('sharp')
   const buffer = Buffer.from(imageData.buffer)
 
   // 获取原始尺寸
   const metadata = await sharp.default(buffer).metadata()
-  const originalWidth = metadata.width
-  const originalHeight = metadata.height
+  const alignedWidth = alignTo64(metadata.width)
+  const alignedHeight = alignTo64(metadata.height)
 
-  // 对齐到64的倍数
-  const { width, height } = alignTo64(originalWidth, originalHeight)
-
-  // 生成对齐后的干净原图 (用于发送给API)
-  const cleanBuffer = await sharp.default(buffer)
-    .resize(width, height, {
-      fit: 'fill',
-      kernel: 'lanczos3'
-    })
+  // 先resize到64倍数，再调暗
+  const darkenedBuffer = await sharp.default(buffer)
+    .resize(alignedWidth, alignedHeight, { fit: 'fill' })
+    .modulate({ brightness: factor })
     .png()
     .toBuffer()
 
-  // 生成暗图 (亮度降低到0.4, 用于用户涂鸦)
-  const darkBuffer = await sharp.default(cleanBuffer)
-    .modulate({ brightness: 0.4 })
+  // 同时生成对齐后的原图（不调暗，用于后续API调用）
+  const alignedOriginal = await sharp.default(buffer)
+    .resize(alignedWidth, alignedHeight, { fit: 'fill' })
     .png()
     .toBuffer()
 
-  return { cleanBuffer, darkBuffer, width, height }
+  const base64 = darkenedBuffer.toString('base64')
+  return {
+    dataUrl: `data:image/png;base64,${base64}`,
+    alignedWidth,
+    alignedHeight,
+    originalBuffer: alignedOriginal
+  }
 }
 
 /**
- * 防伪影蒙版提取算法
- * 使用sharp操作链: grayscale -> threshold -> blur -> threshold
- * 这样可以防止重画边缘出现接缝和伪影
+ * 针对 NovelAI V4 优化的 Mask 处理算法
+ * 逻辑复刻自 Auto-NovelAI-Refactor 的 process_white_regions
+ * 1. 二值化
+ * 2. 8x8 网格对齐 (Latent Alignment)
+ * 3. 区域膨胀 (Block Dilation) 确保覆盖边缘
  * 
- * @param scribbledImageData 用户涂鸦后的图片数据
- * @param targetWidth 目标宽度(必须与原图对齐后的尺寸一致)
- * @param targetHeight 目标高度(必须与原图对齐后的尺寸一致)
- * @returns 蒙版Buffer的base64字符串(不含data:前缀)
+ * @param imageData 用户涂白的图片数据
+ * @param targetWidth 目标宽度（对齐到64的倍数）
+ * @param targetHeight 目标高度（对齐到64的倍数）
+ * @returns 处理后的遮罩base64(不含data:前缀)
  */
-export async function extractInpaintMask(
-  scribbledImageData: ImageData,
+export async function extractMaskWithAntiArtifact(
+  imageData: ImageData,
   targetWidth: number,
   targetHeight: number
 ): Promise<string> {
   const sharp = await import('sharp')
-  const buffer = Buffer.from(scribbledImageData.buffer)
+  const buffer = Buffer.from(imageData.buffer)
 
-  // 防伪影处理管线 (Anti-Artifact Pipeline)
-  const maskBuffer = await sharp.default(buffer)
-    // 1. 确保尺寸一致
+  // 1. 预处理：调整大小 -> 灰度 -> 强二值化
+  // V4 需要纯黑白的 Mask，不能有灰度过渡
+  const { data, info } = await sharp.default(buffer)
     .resize(targetWidth, targetHeight, { fit: 'fill' })
-    // 2. 转为灰度，去除颜色干扰
     .grayscale()
-    // 3. 初步二值化，提取白色涂鸦区域
-    .threshold(150)
-    // 4. ⭐ 关键步骤：高斯模糊，模拟形态学膨胀，向外扩展3-5像素
-    .blur(3.0)
-    // 5. 二次二值化，将模糊后的灰色边缘硬化为纯白
-    .threshold(50)
-    // 6. 输出PNG格式
-    .toFormat('png')
+    .threshold(128) // 阈值化，涂抹部分变白(255)，未涂抹变黑(0)
+    .raw()
+    .toBuffer({ resolveWithObject: true })
+
+  const width = info.width
+  const height = info.height
+
+  // 2. 网格化处理 (Latent Alignment)
+  // NovelAI V4 的 Latent 大小通常是 8x8 像素
+  const blockSize = 8
+  const gridW = Math.ceil(width / blockSize)
+  const gridH = Math.ceil(height / blockSize)
+
+  // 记录哪些网格包含白色像素
+  const gridMap = new Uint8Array(gridW * gridH) // 0: black, 1: white
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const offset = y * width + x
+      // data[offset] 是 0 或 255 (因为做过 threshold)
+      if (data[offset] > 128) {
+        const gx = Math.floor(x / blockSize)
+        const gy = Math.floor(y / blockSize)
+        gridMap[gy * gridW + gx] = 1
+      }
+    }
+  }
+
+  // 3. 网格膨胀 (Block Dilation)
+  // 只要一个网格被标记，将其周围的网格也标记为白，防止边缘伪影
+  // Python 源码中使用了复杂的 BFS+BoundingBox 扩充，这里使用简单的网格膨胀即可达到同等效果
+  const dilatedGridMap = new Uint8Array(gridW * gridH)
+
+  for (let gy = 0; gy < gridH; gy++) {
+    for (let gx = 0; gx < gridW; gx++) {
+      if (gridMap[gy * gridW + gx] === 1) {
+        // 标记自己
+        dilatedGridMap[gy * gridW + gx] = 1
+
+        // 标记上下左右 (扩展范围，相当于源码中的 expansion)
+        // 如果发现边缘融合不好，可以增加循环扩大这个范围
+        const neighbors = [
+          { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+          { dx: 0, dy: 1 }, { dx: 0, dy: -1 },
+          { dx: 1, dy: 1 }, { dx: -1, dy: -1 }, // 对角线也处理，更稳妥
+          { dx: 1, dy: -1 }, { dx: -1, dy: 1 }
+        ]
+
+        for (const n of neighbors) {
+          const nx = gx + n.dx
+          const ny = gy + n.dy
+          if (nx >= 0 && nx < gridW && ny >= 0 && ny < gridH) {
+            dilatedGridMap[ny * gridW + nx] = 1
+          }
+        }
+      }
+    }
+  }
+
+  // 4. 重建 Mask 图片
+  // 如果网格被标记，则该网格对应的 8x8 像素全白
+  const newData = Buffer.alloc(data.length)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const gx = Math.floor(x / blockSize)
+      const gy = Math.floor(y / blockSize)
+
+      if (dilatedGridMap[gy * gridW + gx] === 1) {
+        newData[y * width + x] = 255
+      } else {
+        newData[y * width + x] = 0
+      }
+    }
+  }
+
+  // 5. 输出
+  const maskBuffer = await sharp.default(newData, {
+    raw: { width, height, channels: 1 }
+  })
+    .png()
+    .toBuffer()
+
+  return maskBuffer.toString('base64')
+}
+
+
+
+// ========== 以下是旧版函数，保留兼容性 ==========
+
+/**
+ * 从用户涂白的图片中提取遮罩并进行膨胀处理（旧版，保留兼容）
+ * @deprecated 推荐使用 extractMaskWithAntiArtifact
+ */
+export async function extractAndDilateMask(
+  imageData: ImageData,
+  threshold = 200,
+  minPenSize = 4
+): Promise<string> {
+  const sharp = await import('sharp')
+  const buffer = Buffer.from(imageData.buffer)
+
+  // 获取图片信息
+  const image = sharp.default(buffer)
+  const metadata = await image.metadata()
+  const { width, height, channels } = metadata
+
+  // 提取原始像素数据
+  const { data } = await image.raw().toBuffer({ resolveWithObject: true })
+
+  // 创建遮罩: 白色(>threshold)的区域保留为白色,其他为黑色
+  const maskData = Buffer.alloc(width * height)
+  const pixelSize = channels || 3
+
+  for (let i = 0; i < width * height; i++) {
+    const r = data[i * pixelSize]
+    const g = data[i * pixelSize + 1]
+    const b = data[i * pixelSize + 2]
+
+    // 检查是否为白色
+    const isWhite = r > threshold && g > threshold && b > threshold
+    maskData[i] = isWhite ? 255 : 0
+  }
+
+  // 对遮罩进行膨胀处理
+  const dilatedMask = dilateMaskBuffer(maskData, width, height, minPenSize)
+
+  // 转换为PNG格式
+  const maskBuffer = await sharp.default(dilatedMask, {
+    raw: {
+      width,
+      height,
+      channels: 1
+    }
+  })
+    .png()
     .toBuffer()
 
   return maskBuffer.toString('base64')
 }
 
 /**
- * 将Buffer转换为Data URL格式
- * @param buffer 图片Buffer
- * @param mimeType MIME类型
- * @returns Data URL字符串
+ * 对遮罩Buffer进行膨胀处理（旧版）
  */
-export function bufferToDataURL(buffer: Buffer, mimeType = 'image/png'): string {
-  const base64 = buffer.toString('base64')
-  return `data:${mimeType};base64,${base64}`
+function dilateMaskBuffer(data: Buffer, width: number, height: number, minPenSize: number): Buffer {
+  const iterations = Math.floor(minPenSize / 2)
+  let currentData = Buffer.from(data)
+  let tempData = Buffer.alloc(data.length)
+
+  for (let iter = 0; iter < iterations; iter++) {
+    tempData = Buffer.from(currentData)
+
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const idx = y * width + x
+
+        // 检查当前像素是否为白色
+        if (tempData[idx] > 128) {
+          // 膨胀到周围8个像素
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const nidx = (y + dy) * width + (x + dx)
+              currentData[nidx] = 255
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return currentData
 }

@@ -4,7 +4,7 @@ commands:
     usage: |-
       コンマで区切られた英語の生成呪文 (プロンプト) を入力してください。例：1girl, red eyes, black hair。
       モデルに用いられる単語は Danbooru のタグとほとんど同じです。
-      興味があったら、レポジトリにスターを付けてください：https://github.com/koishijs/novelai-bot
+      興味があったら、レポジトリにスターを付けてください：https://github.com/hhs2275/koishi-plugin-hhs-huatu
     options:
       enhance: 向上 (enhance) モードを有効
       model: モデルを指定

@@ -5,7 +5,7 @@ commands:
       Entrez « novelai » avec les descriptions textuelles (anglais : prompt) de la scène que vous souhaitez générer.
       De nombreux modèles exigent que les descriptions textuelles soient en anglais, par ex. a girl in the forest, blonde hair, red eyes, white dress.
       Vous pouvez utiliser des balises séparées par des virgules, comme sur Danbooru.
-      Donnez-lui une étoile : https://github.com/koishijs/novelai-bot
+      Donnez-lui une étoile : https://github.com/hhs2275/koishi-plugin-hhs-huatu
     options:
       enhance: Mode d'amélioration de l'image
       model: Définir le modèle pour la génération
