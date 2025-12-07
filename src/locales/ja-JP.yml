@@ -146,7 +146,7 @@ commands:
       queue-position: "合計キュー: {0} 件のタスク | あなたのキュー: {1} 件のタスク"
       queue-full: キュー上限に達しました ({0})
       exceed-user-queue: タスク上限 ({0}) に達しました
-      penalty-cooldown: {0} 秒お待ちください
+      penalty-cooldown: "{0} 秒お待ちください"
       redraw-queued: "{0} 件の再描画タスクをキューに追加しました"
       exceed-max-iteration: 最大生成回数を超えました。
       expect-prompt: タグを入力してください。

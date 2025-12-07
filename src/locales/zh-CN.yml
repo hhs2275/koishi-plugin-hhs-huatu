@@ -83,6 +83,7 @@ commands:
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
+      inpaint-wait-image: 请在60秒内发送需要局部重绘的原图。
       inpaint-step1: 已将原图调暗，请使用画图工具在需要重绘的区域涂上白色，然后在120秒内发送回来。
       inpaint-step2: 请发送涂好白色区域的图片
       inpaint-timeout: 等待超时，局部重绘已取消。

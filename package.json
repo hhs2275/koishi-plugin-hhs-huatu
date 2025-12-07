@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-hhs-huatu",
   "description": "Generate images by diffusion models",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "main": "lib/index.js",
   "typings": "lib/index.d.ts",
   "files": [
@@ -47,11 +47,11 @@
       ]
     },
     "description": {
-      "en": "Image Generation. Support [NovelAI](https://novelai.net/), Stable Diffusion and more. Support v4.5 full and characters feature, director tools feature.",
+      "en": "Image Generation. Based on [novelai-bot](https://bot.novelai.dev/) plugin, supports v4.5 full, characters feature, director tools, and inpainting.",
       "zh": "对[novelai-bot](https://bot.novelai.dev/)插件二次开发，已经支持v4.5full和characters功能，导演工具功能，局部重绘",
-      "zh-TW": "基於[novelai-bot](https://bot.novelai.dev/)插件二次開發，目前已支持v4.5模型，characters，导演工具功能",
-      "fr": "Génération d'images. Développement secondaire du plugin [novelai-bot](https://bot.novelai.dev/), prend désormais en charge la v4.5 et les fonctionnalités characters,",
-      "ja": "画像生成。[novelai-bot](https://bot.novelai.dev/)プラグインの二次開発を行い、v4.5モデル，characters，导演工具機能に対応しました。"
+      "zh-TW": "基於[novelai-bot](https://bot.novelai.dev/)插件二次開發，已支持v4.5 full和characters功能、導演工具、局部重繪",
+      "fr": "Génération d'images. Basé sur le plugin [novelai-bot](https://bot.novelai.dev/), prend en charge v4.5 full, la fonctionnalité characters, les outils de direction et l'inpainting.",
+      "ja": "画像生成。[novelai-bot](https://bot.novelai.dev/)プラグインの二次開発。v4.5 full、characters機能、ディレクターツール、部分再描画に対応。"
     }
   },
   "keywords": [

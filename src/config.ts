@@ -210,15 +210,12 @@ export const PromptConfig: Schema<PromptConfig> = Schema.object({
 }).description('输入设置')
 
 interface FeatureConfig {
-  anlas?: Computed<boolean>
   text?: Computed<boolean>
   image?: Computed<boolean>
   upscale?: Computed<boolean>
 }
 
-const naiFeatures = Schema.object({
-  anlas: Schema.computed(Schema.boolean(), options).default(false).description('是否允许使用点数。（目前实际没有实现）'),
-})
+const naiFeatures = Schema.object({})
 
 const sdFeatures = Schema.object({
   upscale: Schema.computed(Schema.boolean(), options).default(true).description('是否启用图片放大。'),
