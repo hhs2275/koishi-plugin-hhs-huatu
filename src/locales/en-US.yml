@@ -1,69 +1,175 @@
 commands:
   novelai:
-    description: Generate Images from Novel AI
+    description: AI Image Generation
     usage: |-
-      Enter "novelai" with English prompt or tags, e.g. a girl in the forest, blonde hair, red eyes, white dress, etc.
-      You can also use comma separated tags like those on Danbooru.
-      Star it: https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      Enter comma-separated English tags, e.g. Mr.Quin, dark sword, red eyes.
+      Find available tags on Danbooru.
+      Star the repository: https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      
+      The image review feature now supports group filtering. You can configure it to only enable review in specific groups.
+
+    shortcuts:
+      imagine: draw|commission
+      enhance: enhance
+
     options:
-      enhance: Image Enhance Mode
-      model: Set Model for Generation
-      resolution: Set Image Resolution
-      override: Disable Default Prompts
+      enhance: Image Enhancement Mode
+      model: Set Generation Model
+      resolution: |-
+        Set Image Size
+        portrait: Portrait (832x1216)
+        square: Square (1024x1024)
+        landscape: Landscape (1216x832)
+      override: Disable Default Tags
       sampler: Set Sampler
       seed: Set Random Seed
       steps: Set Iteration Steps
       scale: Set CFG Scale
-      strength: Set Denoising Strength
-      noise: Set Noising Strength
-      hiresFix: Enable Hires Fix.
-      undesired: Negative Prompt
+      rescale: CFG Rescale Correction (0-1)
+      strength: Image Modification Strength
+      noise: Image Noise Strength
+      hiresFix: Enable High Resolution Fix
+      undesired: Negative Tags
       noTranslator: Disable Auto Translation
-      iterations: Set Batch Count.
+      iterations: Set Generation Count
+      batch: Set Batch Size
+      chars: Set character prompts, enclose in quotes, separate with semicolon `;` or `；`
+      inpaint: Enable Inpainting Mode
+      smea: Enable SMEA
+      smeaDyn: Enable DYN
+      scheduler: Set Scheduler
+      decrisper: Enable Dynamic Thresholding
+
+
     messages:
-      exceed-max-iteration: Exceeded max batch count.
-      expect-prompt: Expect a prompt.
-      expect-image: Expect an image.
-      latin-only: Invalid prompt, only English words can be used.
-      too-many-words: Too many words in prompt.
-      forbidden-word: Forbidden words in prompt.
-      concurrent-jobs: |-
-        <random>
-          <>Too busy to handle your request...</>
-          <>Brb power nap :zzz:</>
-          <>(*~*) Have no time to draw a new one.</>
-        </random>
-      waiting: |-
-        <random>
-          <>The illustrator starts painting.</>
-          <>Monet and Da Vinci, whose style is better for this?</>
-        </random>
-      pending: "<plural count={0}>\n  <>Sure.</>\n  <>Sure, but please wait for me to complete this one before.</>\n  <>Bruh, there are {0} jobs pending!</>\n</plural>"
-      invalid-size: The Enhance mode can only be used for images generated. Use "novelai" without enhance option if you are using normal img2img.
-      invalid-resolution: Invalid resolution for image generation. The width and height of image should be multiple of 64.
-      custom-resolution-unsupported: Custom resolution is not supported.
-      file-too-large: File is too large.
-      unsupported-file-type: Unsupported file type.
-      download-error: Parsing image failed.
+      queue-position: Currently {0} tasks in queue, you have {1} tasks being processed
+      queue-full: Queue limit reached ({0}), please try again later
+      exceed-user-queue: Your task limit ({0}) has been reached, cooldown active
+      penalty-cooldown: Due to queue overflow, please wait {0} seconds before continuing
+      redraw-queued: Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})
+      exceed-max-iteration: Exceeded maximum generation count.
+      expect-prompt: Please enter tags.
+      expect-image: Please provide an image.
+      too-many-images: Too many images.
+      invalid-content: Invalid content in input.
+      latin-only: Only English input is accepted.
+      too-many-words: Too many words in input.
+      forbidden-word: Input contains forbidden words.
+      concurrent-jobs: Please try again later, I'm currently overloaded...
+      waiting: "Total queue: {0} tasks | Your queue: {1} tasks"
+      pending: "Total queue: {0} tasks | Your queue: {1} tasks"
+      exceed-redraw-limit: Exceeded maximum redraw limit ({0})
+      invalid-size: The enhance feature only works with generated images. For normal img2img, please use "draw" instead of "enhance".
+      invalid-resolution: Invalid image size. Width and height must both be multiples of 64.
+      custom-resolution-unsupported: Custom image size is not supported.
+      file-too-large: File too large.
+      unsupported-file-type: Unsupported file format
+      download-error: Image download failed, link may have expired.
       unknown-error: An unknown error occurred.
-      response-error: An unknown error occurred ({0}).
-      empty-response: The server didn't return a valid image.
-      request-failed: Request failed ({0}).
+      image-review-failed: Image review failed, may contain inappropriate content. Please modify your tags and try again.
+      image-review-failed-muted: Image review failed, may contain inappropriate content. You have been muted for {0} seconds
+      image-review-error: Error during image review, please try again later.
+      response-error: Unknown error occurred ({0}).
+      empty-response: Server returned an empty image, please try again later.
+      request-failed: Request failed ({0}), please try again later.
       request-timeout: Request timeout.
-      invalid-password: Incorrect email address or password.
-      invalid-token: The token is invalid or expired. Please contact your administrator.
-      unauthorized: The token is unauthorized, this happens while your account didn't have a valid subscription. Please contact your administrator.
-  novelai.upscale:
-    description: Upscale Images by AI
+      invalid-password: Email or password incorrect.
+      invalid-token: Token invalid or expired, please contact the administrator.
+      all-tokens-invalid: All tokens are invalid or expired, please contact the administrator to update tokens.
+      unauthorized: Token not authorized, subscription may need renewal. Please contact the administrator.
+      daily-limit-reached: Your daily limit ({0} times) has been reached. Please become a member or come back tomorrow.
+      member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
+      membership-expired: Your membership has expired, you have been reverted to normal user privileges.
+      membership-active: You are currently a member, daily usage {0} times, remaining {1} times.
+      non-member-usage: You are currently a regular user, daily usage {0} times, used {1} times today, remaining {2} times.
+      cooldown: Drawing cooldown active, please wait {0} seconds.
+      inpaint-step1: The original image has been darkened. Please paint white on the areas you want to repaint, then send it back within 120 seconds.
+      inpaint-step2: Please send the image with white painted areas
+      inpaint-timeout: Timeout, inpainting has been cancelled.
+      inpaint-no-mask: No image detected, inpainting has been cancelled.
+      inpaint-error: Inpainting processing failed, please try again.
+      inpaint-url-expired: Image link has expired.
+  
+  novelai.reset-queue:
+    description: Reset User Queue Status
+    usage: Reset queue count and cooldown for a specified user
     options:
-      scale: Set Upscale By
-      resolution: Set Upscale To
-      crop: Crop Image Before Upscaling
-      upscaler: Set Upscaler
-      upscaler2: Set Upscaler
-      upscaler2visibility: Set Visibility of Upscaler 2
-      upscaleFirst: Upscale Image Before Restoring Face
+      user: Target User ID
     messages:
-      expect-image: Expect an image.
-      download-error: Parsing image failed.
+      default: Queue status for user {0} has been reset
+      invalid-user: Invalid user ID
+      permission-denied: Insufficient permissions
+
+  novelai.queue:
+    description: Query NAI Drawing Queue Status
+    usage: View current number of tasks in queue and your tasks
+
+  novelai.upscale:
+    description: AI Image Upscaling
+
+    shortcuts:
+      upscale: upscale
+
+    options:
+      scale: Set Upscale Factor
+      resolution: Set Upscale Size
+      crop: Crop to Fit Size
+      upscaler: Set Upscaler Model
+      upscaler2: Set Upscaler Model 2
+      upscaler2visibility: Set Upscaler 2 Visibility
+      upscaleFirst: Upscale Before Face Restoration
+
+    messages:
+      expect-image: Please provide an image.
+      download-error: Image parsing failed.
       unknown-error: An unknown error occurred.
+      image-review-failed: Image review failed, may contain inappropriate content. Please modify your tags and try again.
+      image-review-error: Error during image review, please try again later.
+
+  novelai.redraw:
+    description: Redraw
+    usage: |-
+      Modify the <redraw> tag added by the novelai-bot plugin and execute the command again to redraw the last image.
+      
+  novelai.member:
+    description: Membership System
+    usage: |-
+      Query or set membership status. Administrators can set other users' membership status.
+      Examples:
+      member  Query your own membership status
+      member -u ID (Query membership status of a specific user)
+      member -d 30 (Set yourself as a member for 30 days)
+      member -u ID -d 30 (Set a specific user as a member for 30 days)
+      member -c (Cancel your own membership)
+      member -u ID -c (Cancel a specific user's membership)
+      member -l (View member list)
+      member -l -p 2 (View member list, page 2)
+      member -l -s 20 (View member list, 20 per page, sorted by membership level)
+    messages:
+      queue-position: "Total queue: {0} tasks | Your queue: {1} tasks"
+      queue-full: Queue limit reached ({0}), please try again later
+      exceed-user-queue: Your task limit ({0}) has been reached, cooldown active
+      penalty-cooldown: Due to queue overflow, please wait {0} seconds before continuing
+      redraw-queued: Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})
+      exceed-max-iteration: Exceeded maximum generation count.
+      expect-prompt: Please enter tags.
+      expect-image: Please provide an image.
+      too-many-images: Too many images.
+      invalid-content: Invalid content in input.
+      latin-only: Only English input is accepted.
+      too-many-words: Too many words in input.
+      forbidden-word: Input contains forbidden words.
+      unknown-error: An unknown error occurred.
+      invalid-token: Token invalid or expired, please contact the administrator.
+      all-tokens-invalid: All tokens are invalid or expired, please contact the administrator to update tokens.
+      unauthorized: Token not authorized, subscription may need renewal. Please contact the administrator.
+      daily-limit-reached: Your daily limit ({0} times) has been reached. Please become a member or come back tomorrow.
+      member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
+      membership-expired: Your membership has expired, you have been reverted to normal user privileges.
+      membership-active: You are currently a member, daily usage {0} times, remaining {1} times.
+      non-member-usage: You are currently a regular user, daily usage {0} times, used {1} times today, remaining {2} times.
+      cooldown: Drawing cooldown active, please wait {0} seconds.
+      response-error: Unknown error occurred ({0}).
+      request-timeout: Request timeout.
+      request-failed: Request failed ({0}), please try again later.
+      empty-response: Server returned an empty image, please try again later.
