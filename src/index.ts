@@ -44,46 +44,45 @@ const EMOTION_REVERSE_MAP: Record<DirectorTools.Emotion, string> = Object.fromEn
   Object.entries(EMOTION_MAP).map(([cn, en]) => [en, cn])
 ) as Record<DirectorTools.Emotion, string>
 export const usage = `
-##  hhs-huatu 插件
+# 🎨 hhs-huatu 插件
 
-HHS绘图插件交流QQ群：[112879548](https://qm.qq.com/q/4nKKvckKbu) 有问题欢迎加群讨论！
+> **基于 [novelai-bot](https://bot.novelai.dev/) 的增强版 AI 绘图插件，提供更智能、便捷的 NovelAI 体验。**
 
-本插件基于优秀的[novelai-bot](https://bot.novelai.dev/)项目进行二次开发，增添多项实用功能，提供更加智能、便捷的AI绘图体验！
+[![](https://img.shields.io/badge/QQ群-112879548-blue)](https://qm.qq.com/q/4nKKvckKbu) [![](https://img.shields.io/badge/GitHub-仓库地址-black)](https://github.com/hhs2275/koishi-plugin-hhs-huatu)
 
-### 主要特色
+### ✨ 核心亮点
 
--  **智能队列系统**：解决多任务并发时的429错误问题，（注意：你使用的nai账号需要是独享，不然也是可能会出现429错误）
--  **会员特权系统**：为重度用户提供更好体验，包括更高的每日使用限制和更短的冷却时间
--  **图片审核系统**：自动过滤不当内容，支持多种审核策略，保障内容安全
--  **支持以图画图**：初步对nai的以图画图进行适配，后续可能持续优化
--  **便捷重画功能**：一键重新生成之前的作品，支持"重画"、"重画一下"、"重画两张"等多种指令形式
--  **角色提示词功能**：支持设置角色提示词，用引号将角色提示词括起来，用分号 ; 或 ；分隔角色。目前仅适配v4/v4.5模型。
--  **导演工具**：支持多种图像处理工具，包括线稿提取、素描转换、背景移除、图像上色、表情修改、删文字等。发送“help 导演工具”查看详细说明。
-### 角色提示词功能
-支持的模型
-- ✅ nai-diffusion-4-curated-preview
-- ✅ nai-diffusion-4-full  
-- ✅ nai-diffusion-4-5-curated
-- ✅ nai-diffusion-4-5-full
--K 参数使用方式
-nai4/nai4c/nai4-5/nai4-5c -K "角色1提示词@位置1 --uc:负向提示1;角色2提示词@位置2 --uc:负向提示2"
-**位置坐标表（5×5网格）：**
-\`\`\`
-     A    B    C    D    E
-1   A1   B1   C1   D1   E1  (顶部)
-2   A2   B2   C2   D2   E2
-3   A3   B3   C3   D3   E3  (中心)
-4   A4   B4   C4   D4   E4
-5   A5   B5   C5   D5   E5  (底部)
-   (左)            (右)
-\`\`\`
-已注册指令nai4，nai4c，nai4-5，nai4-5c，分别可以直接调用novelai不同模型
-新增-R参数指令，用于调整cfg_rescale数值（及配置中rescale的值）范围0-1。
-### 使用提示（点击当前版本查看更多说明）
+本插件针对 **NovelAI V4 & V4.5** 模型进行了深度适配，预设快捷指令，助你快速切换模型：
 
-发送"help nai"查看基础指令，"help 会员"了解会员相关功能。
-群内机器人已搭载本插件，免费体验！如果插件有任何问题，欢迎反馈！[112879548](https://qm.qq.com/q/4nKKvckKbu)
-插件问题可以联系作者：qq 2275438102
+| 指令 | 对应模型 (Model) | 说明 |
+| :--- | :--- | :--- |
+| \`nai4\` | \`nai-diffusion-4-full\` | V4 全量模型 |
+| \`nai4c\` | \`nai-diffusion-4-curated\` | V4 精选模型 |
+| \`nai4-5\` | \`nai-diffusion-4-5-full\` | V4.5 全量模型 |
+| \`nai4-5c\` | \`nai-diffusion-4-5-curated\` | V4.5 精选模型 |
+
+### 🛠️ 功能列表
+
+**🎨 绘图核心**
+* **全面支持**：文生图、图生图基础功能完整。
+* **局部重绘 (Inpaint)**：支持对图片特定区域进行重绘。
+* **导演工具**：novelai官网的导演工具功能。
+* **V4 角色提示词**：novelai官网的多角色提示词系统。
+
+**⚙️ 系统与管理**
+* **高并发优化**：内置队列系统与 Token 池轮询，多账号负载均衡。
+* **会员管理**：支持用户分级管理（数据存为 JSON，方便备份/迁移）。
+* **智能审核**：集成腾讯 AI 或 API4AI，自动过滤违规内容。
+
+### 🗓️ 开发计划
+- [ ] **点数控制系统**：精细化控制用户点数消耗（配置项完善中）。
+- [ ] **氛围传输功能**：实现图片风格与氛围的快速迁移。
+
+---
+
+### 📖 更多资源
+* 详细教程请移步 [GitHub 仓库](https://github.com/hhs2275/koishi-plugin-hhs-huatu)
+* 遇到问题？欢迎加入交流群：[112879548](https://qm.qq.com/q/4nKKvckKbu) (联系群主反馈问题/提交建议/愉快玩耍)
 `
 export * from './config'
 
@@ -401,6 +400,44 @@ export function apply(ctx: Context, config: Config) {
         }
         ctx.logger.error(err)
         return session.text('commands.novelai.messages.download-error')
+      }
+
+      // 局部重绘的"重画"逻辑：如果有 URL 但没有 Base64，说明是重画任务，需要重新计算
+      if (options.inpaint && !options._maskBase64 && options._maskUrl) {
+        try {
+          if (config.debugLog) ctx.logger.info('[Inpaint] 检测到重画任务，正在重新下载并处理遮罩...')
+
+          // 1. 重新处理原图，获取对齐后的尺寸
+          const darkenResult = await darkenImage(image, 0.5)
+
+          // 2. 下载遮罩图
+          let maskImageData
+          try {
+            maskImageData = await download(ctx, options._maskUrl)
+          } catch (err) {
+            ctx.logger.error(`[Inpaint] 遮罩图片下载失败: ${err}`)
+            return session.text('commands.novelai.messages.inpaint-url-expired')
+          }
+
+          // 3. 重新提取遮罩
+          const maskBase64 = await extractMaskWithAntiArtifact(
+            maskImageData,
+            darkenResult.alignedWidth,
+            darkenResult.alignedHeight
+          )
+
+          // 4. 恢复 options 中的参数，供后续逻辑使用
+          options._maskBase64 = maskBase64
+          options._originalBase64 = darkenResult.originalBuffer.toString('base64')
+          options._alignedWidth = darkenResult.alignedWidth
+          options._alignedHeight = darkenResult.alignedHeight
+
+          if (config.debugLog) ctx.logger.info('[Inpaint] 重画数据重建完成')
+
+        } catch (err) {
+          ctx.logger.error(`[Inpaint] 重画数据恢复失败: ${err}`)
+          return session.text('commands.novelai.messages.inpaint-url-expired')
+        }
       }
 
       // 局部重绘模式：mask 数据已在进入队列之前准备好（在命令 action 中完成交互）
@@ -1224,7 +1261,11 @@ export function apply(ctx: Context, config: Config) {
             darkenResult.alignedHeight
           )
 
-            // 8. 保存遮罩和原图到options中（这些会传递给 generateImage）
+            // 8. 保存 URL 到 options 中（供重画功能使用，避免存储 Base64 占用内存）
+            ; (options as any)._originalUrl = imgUrl
+            ; (options as any)._maskUrl = maskUrl
+
+            // 9. 保存遮罩和原图到options中（这些会传递给 generateImage）
             ; (options as any)._maskBase64 = maskBase64
             ; (options as any)._originalBase64 = darkenResult.originalBuffer.toString('base64')
             ; (options as any)._alignedWidth = darkenResult.alignedWidth

@@ -26,7 +26,7 @@ export class QueueSystem {
     options: any,
     input: string
   }> = Object.create(null)
-  
+
   // 重画相关
   private lastRedrawTime = 0
   private usedTokenIndices: Set<number> = new Set()
@@ -35,13 +35,13 @@ export class QueueSystem {
 
   // 最大并发任务数
   public maxConcurrentTasks: number
-  
+
   // 会员系统引用
   private membershipSystem: MembershipSystem | null = null
-  
+
   // Token管理相关
   private tokenPool: boolean[] = []
-  
+
   constructor(
     private ctx: Context,
     private config: Config,
@@ -63,19 +63,19 @@ export class QueueSystem {
       this.maxConcurrentTasks = 1
     }
   }
-  
+
   // 获取锁
   async acquireRedrawLock(): Promise<void> {
     if (!this.redrawLock) {
       this.redrawLock = true
       return Promise.resolve()
     }
-    
+
     return new Promise<void>((resolve) => {
       this.redrawWaitQueue.push(resolve)
     })
   }
-  
+
   // 释放锁
   releaseRedrawLock(): void {
     const next = this.redrawWaitQueue.shift()
@@ -88,32 +88,32 @@ export class QueueSystem {
       this.redrawLock = false
     }
   }
-  
+
   // 生成唯一且未被最近使用的 token 索引
   getUniqueTokenIndex(currentIndex: number, tokenCount: number): number {
     if (tokenCount <= 1) return 0
-    
+
     // 如果所有索引都被使用了，清空集合
     if (this.usedTokenIndices.size >= tokenCount) {
       this.usedTokenIndices.clear()
     }
-    
+
     // 尝试找到一个未使用的索引
     let newIndex = currentIndex
     let attempts = 0
     const maxAttempts = tokenCount * 2 // 设置最大尝试次数，避免死循环
-    
+
     while (this.usedTokenIndices.has(newIndex) && attempts < maxAttempts) {
       newIndex = (newIndex + 1) % tokenCount
       attempts++
     }
-    
+
     // 将新索引添加到使用过的集合中
     this.usedTokenIndices.add(newIndex)
-    
+
     return newIndex
   }
-  
+
   // 从 Token 池中获取一个空闲的 token 索引（并标记为占用）
   private acquireTokenIndex(): number | null {
     if (!this.tokenPool.length) return null
@@ -143,11 +143,11 @@ export class QueueSystem {
   public returnTokenIndex(index: number): void {
     this.releaseTokenIndex(index)
   }
-  
+
   // 处理队列
   async processQueue() {
     if (this.taskQueue.length === 0) return
-    
+
     // 按照 Token 池的空闲数量并行启动任务
     while (this.taskQueue.length > 0) {
       const tokenIndex = this.acquireTokenIndex()
@@ -176,7 +176,7 @@ export class QueueSystem {
       })
     }
   }
-  
+
   // 添加任务到队列
   addTask(task: TaskQueueItem): Promise<any> {
     return new Promise((resolve, reject) => {
@@ -191,23 +191,23 @@ export class QueueSystem {
           reject(reason)
         }
       })
-      
+
       this.processQueue()
     })
   }
-  
+
   // 获取队列状态
   getQueueStatus(userId: string): { totalWaiting: number; userQueue: number } {
     const totalWaiting = this.taskQueue.length + this.processingTasks
     const userQueue = this.userTasks[userId] || 0
-    
+
     return { totalWaiting, userQueue }
   }
-  
+
   // 检查用户是否可以添加任务
   canAddTask(userId: string): { canAdd: boolean; message?: string } {
     const now = Date.now()
-    
+
     // 检查冷却时间
     if (this.userCooldowns[userId] && now < this.userCooldowns[userId]) {
       const remainingTime = Math.ceil((this.userCooldowns[userId] - now) / 1000)
@@ -216,7 +216,7 @@ export class QueueSystem {
         message: `penalty-cooldown:${remainingTime}`
       }
     }
-    
+
     // 检查用户队列大小
     const userTaskCount = this.userTasks[userId] || 0
     if (userTaskCount >= this.config.maxUserQueueSize) {
@@ -226,36 +226,47 @@ export class QueueSystem {
         message: `exceed-user-queue:${this.config.maxUserQueueSize}`
       }
     }
-    
+
     return { canAdd: true }
   }
-  
+
   // 增加用户任务计数
   incrementUserTask(userId: string, count: number = 1): void {
     this.userTasks[userId] = (this.userTasks[userId] || 0) + count
   }
-  
+
   // 重置用户队列状态
   resetUserQueue(userId: string): void {
     this.userTasks[userId] = 0
     delete this.userCooldowns[userId]
   }
-  
+
   // 保存用户最后一次任务
   saveLastTask(userId: string, session: Session<'authority'>, options: any, input: string): void {
-    this.userLastTask[userId] = { session, options, input }
+    // 1. 深拷贝 options
+    const optionsToSave = JSON.parse(JSON.stringify(options))
+
+    // 2. 删除占内存的 Base64 数据
+    // 因为我们已经存了 _originalUrl 和 _maskUrl，这些大字符串就不需要了
+    if (optionsToSave._originalBase64) delete optionsToSave._originalBase64
+    if (optionsToSave._maskBase64) delete optionsToSave._maskBase64
+    if (optionsToSave._alignedWidth) delete optionsToSave._alignedWidth
+    if (optionsToSave._alignedHeight) delete optionsToSave._alignedHeight
+
+    // 3. 保存瘦身后的数据到内存
+    this.userLastTask[userId] = { session, options: optionsToSave, input }
   }
-  
+
   // 获取用户最后一次任务
   getLastTask(userId: string): { session: Session<'authority'>, options: any, input: string } | undefined {
     return this.userLastTask[userId]
   }
-  
+
   // 获取 lastRedrawTime
   getLastRedrawTime(): number {
     return this.lastRedrawTime
   }
-  
+
   // 设置 lastRedrawTime
   setLastRedrawTime(time: number): void {
     this.lastRedrawTime = time

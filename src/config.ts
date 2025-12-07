@@ -217,7 +217,7 @@ interface FeatureConfig {
 }
 
 const naiFeatures = Schema.object({
-  anlas: Schema.computed(Schema.boolean(), options).default(true).description('是否允许使用点数。'),
+  anlas: Schema.computed(Schema.boolean(), options).default(false).description('是否允许使用点数。（目前实际没有实现）'),
 })
 
 const sdFeatures = Schema.object({
