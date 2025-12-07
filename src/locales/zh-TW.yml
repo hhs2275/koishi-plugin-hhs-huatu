@@ -2,73 +2,173 @@ commands:
   novelai:
     description: AI 繪圖
     usage: |-
-      輸入以逗號分割的英文提示詞，例如 portrait, blonde hair, red eyes。
+      輸入以逗號分割的英文提示詞，例如 Mr.Quin, dark sword, red eyes。
       查找可用的提示詞標籤可以使用 Danbooru。
       快來給專案標星收藏吧：https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      
+      圖片審核功能現在支援群組過濾，可以在設定中設定只在特定群組開啟審核。
+
     shortcuts:
       imagine: 畫畫|約稿
       enhance: 增強
+
     options:
       enhance: 圖像增強模式
       model: 設定生成模型
-      resolution: 設定圖像尺寸
+      resolution: |-
+        設定圖像尺寸
+        portrait: 直圖 (832x1216)
+        square: 方圖 (1024x1024)
+        landscape: 橫圖 (1216x832)
       override: 禁用預設標籤
       sampler: 設定採樣器
       seed: 設定隨機種子
       steps: 設定迭代步數
-      scale: 設定提示詞的相關性
+      scale: 設定對輸入的服從度
+      rescale: 輸入服從度調整規模（0-1）
       strength: 圖像修改幅度
       noise: 圖像雜訊強度
-      hiresFix: 啟用高分辨率修復
-      undesired: 反向提示詞
+      hiresFix: 啟用高解析度修復
+      undesired: 排除標籤
       noTranslator: 禁用自動翻譯
-      iterations: 設定繪畫次數
+      iterations: 設定繪製次數
+      batch: 設定繪製批次大小
+      chars: 設定角色提示詞，用引號將角色提示詞括起來，用分號 `;` 或 `；` 分隔角色。
+      inpaint: 啟用局部重繪模式
+      smea: 啟用 SMEA
+      smeaDyn: 啟用 DYN
+      scheduler: 設定調度器
+      decrisper: 啟用動態閾值
+
     messages:
-      exceed-max-iteration: 超過最大繪畫次數
-      expect-prompt: 請輸入提示詞。
+      queue-position: 目前佇列中有 {0} 個任務，你有 {1} 個任務正在處理
+      queue-full: 目前等待任務已達到上限({0})，請稍後再試
+      exceed-user-queue: 你的任務數量已達到上限 ({0})，進入CD
+      penalty-cooldown: 由於超出佇列上限，需要等待 {0} 秒後才能繼續使用
+      redraw-queued: 已將 {0} 張重畫任務加入佇列 (總佇列：{1} | 你的佇列：{2})
+      exceed-max-iteration: 超過最大繪製次數。
+      expect-prompt: 請輸入標籤。
       expect-image: 請輸入圖像。
-      latin-only: 僅接受英文提示詞。
-      too-many-words: 輸入的提示詞數量過多
-      forbidden-word: 提示詞中含有違禁詞彙。
-      concurrent-jobs: |-
-        <random>
-          <>等下再畫吧，我已經忙不過來了……</>
-          <>我…我纔不是不會畫畫，只是沒時間！</>
-          <>我先喝杯咖啡可以嗎，好睏～</>
-        </random>
-      waiting: |-
-        <random>
-          <>少女繪畫中</>
-          <>莫行開，我即時來畫！</>
-        </random>
-      pending: 好酒沉甕底。您還需等我完成前面 {0} 個稿件。
-      invalid-size: 增強功能僅適用於 Novel AI 生成圖。若要使用 img2img 功能請直接使用「約稿」而非「增強」。
-      invalid-resolution: 圖像尺寸無效。寬度與高度都須爲 64 的倍數。
+      too-many-images: 過多的圖像。
+      invalid-content: 輸入中含有無效內容。
+      latin-only: 只接受英文輸入。
+      too-many-words: 輸入的單詞數量過多。
+      forbidden-word: 輸入含有違禁詞。
+      concurrent-jobs: 等會再約稿吧，我已經忙不過來了……
+      waiting: 目前總佇列：{0} 個任務 | 你的佇列：{1} 個任務
+      pending: 目前總佇列：{0} 個任務 | 你的佇列：{1} 個任務
+      exceed-redraw-limit: 超出最大重畫數量限制 ({0})
+      invalid-size: 增強功能僅適用於生成的圖像。普通的 img2img 請直接使用「約稿」而不是「增強」。
+      invalid-resolution: 非法的圖像尺寸。寬高必須都為 64 的倍數。
       custom-resolution-unsupported: 不支援自訂圖像尺寸。
-      file-too-large: 文件體積過大。
-      unsupported-file-type: 不支援的檔案格式。
-      download-error: 圖像解析失敗。
-      unknown-error: 發生未知的錯誤。
-      response-error: 發生未知的錯誤 ({0})。
-      empty-response: 伺服器返回了空圖像，請稍後重試。
-      request-failed: 擷取資料失敗 ({0})，請稍後重試。
-      request-timeout: 擷取資料超時。
-      invalid-password: 電郵地址或密碼不正確。
+      file-too-large: 檔案體積過大。
+      unsupported-file-type: 不支援的檔案格式
+      download-error: 圖像下載失敗，連結可能已過期。
+      unknown-error: 發生未知錯誤。
+      image-review-failed: 圖像審核未通過，可能包含不適內容，請嘗試修改提示詞後重試。
+      image-review-failed-muted: 圖像審核未通過，可能包含不適內容，你已被禁言{0}秒
+      image-review-error: 圖像審核過程中出現錯誤，請稍後重試。
+      response-error: 發生未知錯誤 ({0})。
+      empty-response: 伺服器返回了空白圖像，請稍後重試。
+      request-failed: 請求失敗 ({0})，請稍後重試。
+      request-timeout: 請求逾時。
+      invalid-password: 電子郵件或密碼錯誤。
       invalid-token: 令牌無效或已過期，請聯繫管理員。
-      unauthorized: 令牌未經授權，可能關聯帳戶需要續費，請聯繫管理員。
+      all-tokens-invalid: 所有令牌均無效或已過期，請聯繫管理員更新令牌。
+      unauthorized: 令牌未授權，可能需要續費，請聯繫管理員。
+      daily-limit-reached: 您今日的使用次數已達上限({0}次)，請充值會員或者明天再來。
+      member-daily-limit-reached: 您今日的會員使用次數已達上限({0}次)，請明天再來。
+      membership-expired: 您的會員已過期，已恢復為普通使用者權限。
+      membership-active: 您目前是會員使用者，每日可使用{0}次，剩餘{1}次。
+      non-member-usage: 您目前是普通使用者，每日可使用{0}次，今日已使用{1}次，剩餘{2}次。
+      cooldown: 繪圖CD中，請等待{0}秒後再試。
+      inpaint-step1: 已將原圖調暗，請使用畫圖工具在需要重繪的區域塗上白色，然後在120秒內發送回來。
+      inpaint-step2: 請發送塗好白色區域的圖像
+      inpaint-timeout: 等待逾時，局部重繪已取消。
+      inpaint-no-mask: 未偵測到圖像，局部重繪已取消。
+      inpaint-error: 局部重繪處理失敗，請重試。
+      inpaint-url-expired: 圖像連結已過期。
+  
+  novelai.reset-queue:
+    description: 重置使用者佇列狀態
+    usage: 重置指定使用者的佇列計數和CD
+    options:
+      user: 目標使用者ID
+    messages:
+      default: 已重置使用者 {0} 的佇列狀態
+      invalid-user: 無效的使用者ID
+      permission-denied: 權限不足
+
+  novelai.queue:
+    description: 查詢NAI繪圖佇列狀態
+    usage: 查看目前佇列中的任務數量和你的任務數量
+
   novelai.upscale:
     description: AI 放大圖像
+
     shortcuts:
       upscale: 放大
+
     options:
-      scale: 設定放大倍率
+      scale: 設定放大倍數
       resolution: 設定放大尺寸
       crop: 是否裁剪以適應尺寸
       upscaler: 設定放大模型
       upscaler2: 設定放大模型 2
-      upscaler2visibility: 設定放大模型 2 的可視度
+      upscaler2visibility: 設定放大模型 2 的可見度
       upscaleFirst: 先放大再執行面部修復
+
     messages:
       expect-image: 請輸入圖像。
       download-error: 圖像解析失敗。
-      unknown-error: 發生未知的錯誤。
+      unknown-error: 發生未知錯誤。
+      image-review-failed: 圖像審核未通過，可能包含不適內容，請嘗試修改提示詞後重試。
+      image-review-error: 圖像審核過程中出現錯誤，請稍後重試。
+
+  novelai.redraw:
+    description: 重畫
+    usage: |-
+      修改novelai-bot外掛程式新增的<redraw>標籤，再次執行命令，可以重畫上一次的圖像。
+      
+  novelai.member:
+    description: 會員系統
+    usage: |-
+      查詢或設定會員狀態，管理員可以設定其他使用者的會員狀態。
+      範例：
+      會員  查詢自己的會員狀態
+      會員 -u QQ號 （查詢指定QQ號使用者的會員狀態）
+      會員 -d 30 （自己設定30天會員）
+      會員 -u QQ號 -d 30 （指定QQ號使用者設定30天會員）
+      會員 -c （取消自己的會員資格）
+      會員 -u QQ號 -c （取消指定QQ號使用者的會員資格）
+      會員 -l （查詢會員列表）
+      會員 -l -p 2 （查詢會員列表，第2頁）
+      會員 -l -s 20 （查詢會員列表，每頁20條，按會員等級排序）
+    messages:
+      queue-position: 目前總佇列：{0} 個任務 | 你的佇列：{1} 個任務
+      queue-full: 目前等待任務已達到上限({0}),請稍後再試
+      exceed-user-queue: 你的任務數量已達到上限 ({0})，進入CD
+      penalty-cooldown: 由於超出佇列上限，需要等待 {0} 秒後才能繼續使用
+      redraw-queued: 已將 {0} 張重畫任務加入佇列 (總佇列：{1} | 你的佇列：{2})
+      exceed-max-iteration: 超過最大繪製次數。
+      expect-prompt: 請輸入標籤。
+      expect-image: 請輸入圖像。
+      too-many-images: 過多的圖像。
+      invalid-content: 輸入中含有無效內容。
+      latin-only: 只接受英文輸入。
+      too-many-words: 輸入的單詞數量過多。
+      forbidden-word: 輸入含有違禁詞。
+      unknown-error: 發生未知錯誤。
+      invalid-token: 令牌無效或已過期，請聯繫管理員。
+      all-tokens-invalid: 所有令牌均無效或已過期，請聯繫管理員更新令牌。
+      unauthorized: 令牌未授權，可能需要續費，請聯繫管理員。
+      daily-limit-reached: 您今日的使用次數已達上限({0}次)，請充值會員或者明天再來。
+      member-daily-limit-reached: 您今日的會員使用次數已達上限({0}次)，請明天再來。
+      membership-expired: 您的會員已過期，已恢復為普通使用者權限。
+      membership-active: 您目前是會員使用者，每日可使用{0}次，剩餘{1}次。
+      non-member-usage: 您目前是普通使用者，每日可使用{0}次，今日已使用{1}次，剩餘{2}次。
+      cooldown: 繪圖CD中，請等待{0}秒後再試。
+      response-error: 發生未知錯誤 ({0})。
+      request-timeout: 請求逾時。
+      request-failed: 請求失敗 ({0})，請稍後重試。
+      empty-response: 伺服器返回了空白圖像，請稍後重試。

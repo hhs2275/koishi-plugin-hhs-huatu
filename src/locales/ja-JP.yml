@@ -1,69 +1,172 @@
 commands:
   novelai:
-    description: AI で絵を描く
+    description: AI画像生成
     usage: |-
-      コンマで区切られた英語の生成呪文 (プロンプト) を入力してください。例：1girl, red eyes, black hair。
-      モデルに用いられる単語は Danbooru のタグとほとんど同じです。
-      興味があったら、レポジトリにスターを付けてください：https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      コンマで区切られた英語のタグを入力してください。例：Mr.Quin, dark sword, red eyes。
+      利用可能なタグはDanbooruで検索できます。
+      リポジトリにスターを付けてください：https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      
+      画像審査機能はグループフィルタリングをサポートしています。
+
+    shortcuts:
+      imagine: 描く|依頼
+      enhance: 向上
+
     options:
-      enhance: 向上 (enhance) モードを有効
-      model: モデルを指定
-      resolution: 画像解像度を設定
-      override: デフォルトプロンプトを無効にする
-      sampler: サンプラーを指定
-      seed: シード値を設定
-      steps: ステップ数を設定
-      scale: CFG スケール値を設定
-      strength: ノイズ除去強度を設定
-      noise: ノイズ強度を設定
+      enhance: 画像向上モード
+      model: 生成モデルを設定
+      resolution: |-
+        画像サイズを設定
+        portrait: 縦向き (832x1216)
+        square: 正方形 (1024x1024)
+        landscape: 横向き (1216x832)
+      override: デフォルトタグを無効
+      sampler: サンプラーを設定
+      seed: ランダムシードを設定
+      steps: イテレーション回数を設定
+      scale: CFGスケールを設定
+      rescale: CFGリスケール補正 (0-1)
+      strength: 画像変更強度
+      noise: 画像ノイズ強度
       hiresFix: 高解像度修正を有効
-      undesired: 反対呪文 (ネガティブプロンプト) を設定
+      undesired: ネガティブタグ
       noTranslator: 自動翻訳を無効
-      iterations: 画像生成数を設定
+      iterations: 生成回数を設定
+      batch: バッチサイズを設定
+      chars: キャラクタープロンプトを設定、引用符で囲み、セミコロンで区切る
+      inpaint: インペイントモードを有効
+      smea: SMEAを有効
+      smeaDyn: DYNを有効
+      scheduler: スケジューラーを設定
+      decrisper: ダイナミック閾値を有効
+
     messages:
-      exceed-max-iteration: 画像生成数が最大に超えました。
-      expect-prompt: 生成呪文を入力してください。
+      queue-position: 現在キューに {0} 件のタスク、あなたには {1} 件のタスクが処理中です
+      queue-full: キュー上限に達しました ({0})、後でもう一度お試しください
+      exceed-user-queue: タスク上限 ({0}) に達しました、クールダウン中
+      penalty-cooldown: キューオーバーフローのため、{0} 秒お待ちください
+      redraw-queued: "{0} 件の再描画タスクをキューに追加しました (合計: {1} | あなた: {2})"
+      exceed-max-iteration: 最大生成回数を超えました。
+      expect-prompt: タグを入力してください。
       expect-image: 画像を入力してください。
-      latin-only: 英数字だけが入力可能です。
-      too-many-words: 入力した単語が多すぎる。
-      forbidden-word: 一部の入力した単語が禁止されている。
-      concurrent-jobs: |-
-        <random>
-          <>後でね～今、猫の手も借りたいなの！</>
-          <>描けるの、た、タブレットが起動できませんだから。</>
-          <>じゃ、まず絵を教えて。</>
-        </random>
-      waiting: |-
-        <random>
-          <>私はプロ絵師だから、どんな絵でも描けるの。</>
-          <>仕事している…</>
-        </random>
-      pending: 仕事している前に {0} つの絵が完遂するべきです。
-      invalid-size: 向上モードは AI 生成画像のみに用いられる。img2img (指定画像から生成) を使いたければ、「--enhance」を追加せずにコマンドを再実行してください。
-      invalid-resolution: 無効な解像度。幅と高さが 64 の倍数である必要があります。
-      custom-resolution-unsupported: カスタム画像解像度は使用できません。
-      file-too-large: ファイルのサイズが大きすぎる。
-      unsupported-file-type: ファイルのタイプがサポートされていません。
+      too-many-images: 画像が多すぎます。
+      invalid-content: 入力に無効なコンテンツが含まれています。
+      latin-only: 英語入力のみ受け付けます。
+      too-many-words: 入力した単語が多すぎます。
+      forbidden-word: 入力に禁止語が含まれています。
+      concurrent-jobs: 後でもう一度お試しください、現在処理が混み合っています...
+      waiting: "合計キュー: {0} 件のタスク | あなたのキュー: {1} 件のタスク"
+      pending: "合計キュー: {0} 件のタスク | あなたのキュー: {1} 件のタスク"
+      exceed-redraw-limit: 最大再描画数を超えました ({0})
+      invalid-size: 向上機能は生成された画像にのみ使用できます。
+      invalid-resolution: 無効な画像サイズ。幅と高さはどちらも64の倍数である必要があります。
+      custom-resolution-unsupported: カスタム画像サイズはサポートされていません。
+      file-too-large: ファイルが大きすぎます。
+      unsupported-file-type: サポートされていないファイル形式
       download-error: 画像のダウンロードに失敗しました。
       unknown-error: 不明なエラーが発生しました。
+      image-review-failed: 画像審査に失敗しました、タグを変更して再試行してください。
+      image-review-failed-muted: 画像審査に失敗しました。{0}秒間ミュートされました
+      image-review-error: 画像審査中にエラーが発生しました。
       response-error: 不明なエラーが発生しました ({0})。
-      empty-response: サーバーが無効な画像を返されました、後で試してください。
-      request-failed: リクエストが失敗しました ({0})，後で試してください。
+      empty-response: サーバーが空の画像を返しました。
+      request-failed: リクエストに失敗しました ({0})。
       request-timeout: リクエストがタイムアウトしました。
-      invalid-password: メールアドレスやパスワードが間違っています。
-      invalid-token: 期間切れたまたは無効なトークンです。管理者に連絡してください。
-      unauthorized: アカウント契約が期間切れるか、トークンが認可されていません。管理者に連絡してください。
+      invalid-password: メールアドレスまたはパスワードが間違っています。
+      invalid-token: トークンが無効または期限切れです。
+      all-tokens-invalid: すべてのトークンが無効または期限切れです。
+      unauthorized: トークンが認可されていません。
+      daily-limit-reached: 本日の利用上限 ({0}回) に達しました。
+      member-daily-limit-reached: 本日の会員利用上限 ({0}回) に達しました。
+      membership-expired: 会員資格が期限切れになりました。
+      membership-active: 現在会員です、1日あたり{0}回利用可能、残り{1}回。
+      non-member-usage: 現在通常ユーザーです、1日あたり{0}回利用可能、本日{1}回使用済み、残り{2}回。
+      cooldown: 描画クールダウン中です、{0}秒お待ちください。
+      inpaint-step1: 元の画像が暗くなりました。再描画したい領域に白く塗り、120秒以内に送り返してください。
+      inpaint-step2: 白く塗った領域がある画像を送信してください
+      inpaint-timeout: タイムアウト、インペイントはキャンセルされました。
+      inpaint-no-mask: 画像が検出されませんでした。
+      inpaint-error: インペイント処理に失敗しました。
+      inpaint-url-expired: 画像リンクが期限切れです。
+  
+  novelai.reset-queue:
+    description: ユーザーキュー状態をリセット
+    usage: 指定したユーザーのキューカウントとクールダウンをリセット
+    options:
+      user: 対象ユーザーID
+    messages:
+      default: ユーザー {0} のキュー状態がリセットされました
+      invalid-user: 無効なユーザーID
+      permission-denied: 権限が不足しています
+
+  novelai.queue:
+    description: NAI描画キュー状態を照会
+    usage: キュー内の現在のタスク数とあなたのタスクを表示
+
   novelai.upscale:
-    description: AI で画像拡大
+    description: AI画像拡大
+
+    shortcuts:
+      upscale: 拡大
+
     options:
       scale: 拡大倍率を設定
-      resolution: 拡大目標解像度を設定
-      crop: 拡大する前に画像をクロップする
-      upscaler: 拡大モデルを設定
-      upscaler2: 拡大モデル２を設定
-      upscaler2visibility: 拡大モデル２の可視度を設定
-      upscaleFirst: 拡大する前にフェイス修正を行う
+      resolution: 拡大サイズを設定
+      crop: サイズに合わせてクロップ
+      upscaler: アップスケーラーモデルを設定
+      upscaler2: アップスケーラーモデル2を設定
+      upscaler2visibility: アップスケーラー2の可視度を設定
+      upscaleFirst: 顔復元前に拡大
+
     messages:
       expect-image: 画像を入力してください。
-      download-error: 画像のダウンロードに失敗しました。
+      download-error: 画像の解析に失敗しました。
       unknown-error: 不明なエラーが発生しました。
+      image-review-failed: 画像審査に失敗しました。
+      image-review-error: 画像審査中にエラーが発生しました。
+
+  novelai.redraw:
+    description: 再描画
+    usage: |-
+      novelai-botプラグインによって追加された<redraw>タグを変更し、コマンドを再実行して最後の画像を再描画します。
+      
+  novelai.member:
+    description: 会員システム
+    usage: |-
+      会員ステータスを照会または設定します。
+      例：
+      会員  自分の会員ステータスを照会
+      会員 -u ID (特定のユーザーの会員ステータスを照会)
+      会員 -d 30 (自分を30日間の会員に設定)
+      会員 -u ID -d 30 (特定のユーザーを30日間の会員に設定)
+      会員 -c (自分の会員資格をキャンセル)
+      会員 -u ID -c (特定のユーザーの会員資格をキャンセル)
+      会員 -l (会員リストを表示)
+    messages:
+      queue-position: "合計キュー: {0} 件のタスク | あなたのキュー: {1} 件のタスク"
+      queue-full: キュー上限に達しました ({0})
+      exceed-user-queue: タスク上限 ({0}) に達しました
+      penalty-cooldown: {0} 秒お待ちください
+      redraw-queued: "{0} 件の再描画タスクをキューに追加しました"
+      exceed-max-iteration: 最大生成回数を超えました。
+      expect-prompt: タグを入力してください。
+      expect-image: 画像を入力してください。
+      too-many-images: 画像が多すぎます。
+      invalid-content: 無効なコンテンツ。
+      latin-only: 英語入力のみ。
+      too-many-words: 単語が多すぎます。
+      forbidden-word: 禁止語を含んでいます。
+      unknown-error: 不明なエラーが発生しました。
+      invalid-token: トークンが無効です。
+      all-tokens-invalid: すべてのトークンが無効です。
+      unauthorized: トークンが認可されていません。
+      daily-limit-reached: 本日の利用上限 ({0}回) に達しました。
+      member-daily-limit-reached: 会員利用上限 ({0}回) に達しました。
+      membership-expired: 会員資格が期限切れになりました。
+      membership-active: 会員です、1日{0}回、残り{1}回。
+      non-member-usage: 通常ユーザー、1日{0}回、使用{1}回、残り{2}回。
+      cooldown: クールダウン中、{0}秒お待ちください。
+      response-error: エラー ({0})。
+      request-timeout: タイムアウト。
+      request-failed: リクエスト失敗 ({0})。
+      empty-response: 空の画像が返されました。

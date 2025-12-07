@@ -1,72 +1,175 @@
 commands:
   novelai:
-    description: Générer des images sur IA
+    description: Génération d'images par IA
     usage: |-
-      Entrez « novelai » avec les descriptions textuelles (anglais : prompt) de la scène que vous souhaitez générer.
-      De nombreux modèles exigent que les descriptions textuelles soient en anglais, par ex. a girl in the forest, blonde hair, red eyes, white dress.
-      Vous pouvez utiliser des balises séparées par des virgules, comme sur Danbooru.
-      Donnez-lui une étoile : https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      Entrez des tags anglais séparés par des virgules, par ex. Mr.Quin, dark sword, red eyes.
+      Trouvez les tags disponibles sur Danbooru.
+      Donnez une étoile au dépôt : https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      
+      La fonction de modération d'images prend désormais en charge le filtrage par groupe. Vous pouvez configurer l'activation de la modération uniquement dans certains groupes.
+
+    shortcuts:
+      imagine: dessiner|commander
+      enhance: améliorer
+
     options:
-      enhance: Mode d'amélioration de l'image
-      model: Définir le modèle pour la génération
-      resolution: Définir la taille de l'image
-      override: Remplacer les descriptions textuelles de base
+      enhance: Mode d'amélioration d'image
+      model: Définir le modèle de génération
+      resolution: |-
+        Définir la taille de l'image
+        portrait: Portrait (832x1216)
+        square: Carré (1024x1024)
+        landscape: Paysage (1216x832)
+      override: Désactiver les tags par défaut
       sampler: Définir l'échantillonneur
       seed: Définir la graine aléatoire
-      steps: Définir les étapes de l'itération
-      scale: Définir CFG Scale
-      strength: Définir l'intensité du débruitage
-      noise: Définir l'intensité du bruit
-      hiresFix: Activer la correction pour la résolution haute.
-      undesired: Définir les descriptions textuelles négatives
+      steps: Définir les étapes d'itération
+      scale: Définir l'échelle CFG
+      rescale: Correction de redimensionnement CFG (0-1)
+      strength: Intensité de modification de l'image
+      noise: Intensité du bruit de l'image
+      hiresFix: Activer la correction haute résolution
+      undesired: Tags négatifs
       noTranslator: Désactiver la traduction automatique
-      iterations: Définir le nombre des générations
+      iterations: Définir le nombre de générations
+      batch: Définir la taille du lot
+      chars: Définir les prompts de personnages, mettre entre guillemets, séparer par point-virgule `;` ou `；`
+      inpaint: Activer le mode Inpainting
+      smea: Activer SMEA
+      smeaDyn: Activer DYN
+      scheduler: Définir le planificateur
+      decrisper: Activer le seuil dynamique
+
+
     messages:
-      exceed-max-iteration: Trop du nombre des générations.
-      expect-prompt: Attendrez-vous les descriptions textuelles valides.
-      expect-image: Attendrez-vous une image.
-      latin-only: Les descriptions textuelles ne sont pas valides, vous ne pouvez utiliser que des mots anglais.
-      too-many-words: Trop de mots saisis.
-      forbidden-word: Les descriptions textuelles contiennent des mots prohibés.
-      concurrent-jobs: |-
-        <random>
-          <>Trop occupé pour répondre à votre demande...</>
-          <>Courte sieste :zzz:</>
-          <>(*~*) Pas le temps d'en dessiner un nouveau.</>
-        </random>
-      waiting: |-
-        <random>
-          <>D'accord. Je dessine de belles images pour vous.</>
-          <>Votre demande est en cours de génération, veuillez attendre un moment.</>
-          <>L'illustrateur commence à peindre.</>
-          <>Monet et Da Vinci, quel style convient le mieux à cette image ?</>
-        </random>
-      pending: "<plural count={0}>\n  <>D'accord.</>\n  <>D'accord, mais attendez que je complète la dernière demande.</>\n  <>>_< Il y a {0} travaux en cours.</>\n</plural>"
-      invalid-size: Le mode d'amélioration de l'image peut être utilisé seulement pour les images générées. Si vous utilisez le mode de img2img, utilisez « novelai » sans l'option « --enhance ».
-      invalid-resolution: La taille de l'image n'est pas valide. La largeur et la hauteur de l'image doivent être des multiples de 64.
-      custom-resolution-unsupported: La personnalisation de la résolution n'est pas prise en charge.
-      file-too-large: Le fichier est trop important.
-      unsupported-file-type: Le format de fichier non reconnu.
-      download-error: Une erreur d'analyse syntaxique de l'image s'est produite.
+      queue-position: Actuellement {0} tâches dans la file d'attente, vous avez {1} tâches en cours de traitement
+      queue-full: Limite de la file d'attente atteinte ({0}), veuillez réessayer plus tard
+      exceed-user-queue: Votre limite de tâches ({0}) a été atteinte, temps de recharge actif
+      penalty-cooldown: En raison du dépassement de la file d'attente, veuillez attendre {0} secondes
+      redraw-queued: "{0} tâche(s) de redessin ajoutée(s) à la file d'attente (Total : {1} | Vos : {2})"
+      exceed-max-iteration: Nombre maximum de générations dépassé.
+      expect-prompt: Veuillez entrer des tags.
+      expect-image: Veuillez fournir une image.
+      too-many-images: Trop d'images.
+      invalid-content: Contenu invalide dans l'entrée.
+      latin-only: Seule l'entrée en anglais est acceptée.
+      too-many-words: Trop de mots dans l'entrée.
+      forbidden-word: L'entrée contient des mots interdits.
+      concurrent-jobs: Veuillez réessayer plus tard, je suis actuellement surchargé...
+      waiting: "File d'attente totale : {0} tâches | Votre file d'attente : {1} tâches"
+      pending: "File d'attente totale : {0} tâches | Votre file d'attente : {1} tâches"
+      exceed-redraw-limit: Limite de redessin maximum dépassée ({0})
+      invalid-size: La fonction d'amélioration ne fonctionne qu'avec les images générées. Pour img2img normal, veuillez utiliser « dessiner » au lieu de « améliorer ».
+      invalid-resolution: Taille d'image invalide. La largeur et la hauteur doivent toutes deux être des multiples de 64.
+      custom-resolution-unsupported: La taille d'image personnalisée n'est pas prise en charge.
+      file-too-large: Fichier trop volumineux.
+      unsupported-file-type: Format de fichier non pris en charge
+      download-error: Échec du téléchargement de l'image, le lien a peut-être expiré.
       unknown-error: Une erreur inconnue s'est produite.
-      response-error: 'Une erreur inconnue s''est produite : ({0}).'
-      empty-response: Le serveur répond avec l'image invalide.
-      request-failed: 'La demande a échoué : ({0}).'
-      request-timeout: Le délai d'attente de la demande dépassé.
-      invalid-password: L'adresse électronique ou mot de passe introduit est incorrect.
-      invalid-token: Le token est invalide ou a expiré. Veuillez contacter l'administrateur.
-      unauthorized: Le token n'est pas autorisé, peut-être que ce token n'a pas d'abonnement valide. Veuillez contacter l'administrateur.
-  novelai.upscale:
-    description: Agrandir des images sur IA
+      image-review-failed: La modération d'image a échoué, peut contenir du contenu inapproprié. Veuillez modifier vos tags et réessayer.
+      image-review-failed-muted: La modération d'image a échoué, peut contenir du contenu inapproprié. Vous avez été mis en sourdine pendant {0} secondes
+      image-review-error: Erreur lors de la modération d'image, veuillez réessayer plus tard.
+      response-error: Erreur inconnue survenue ({0}).
+      empty-response: Le serveur a renvoyé une image vide, veuillez réessayer plus tard.
+      request-failed: Échec de la requête ({0}), veuillez réessayer plus tard.
+      request-timeout: Délai d'attente de la requête dépassé.
+      invalid-password: E-mail ou mot de passe incorrect.
+      invalid-token: Token invalide ou expiré, veuillez contacter l'administrateur.
+      all-tokens-invalid: Tous les tokens sont invalides ou expirés, veuillez contacter l'administrateur pour mettre à jour les tokens.
+      unauthorized: Token non autorisé, l'abonnement peut nécessiter un renouvellement. Veuillez contacter l'administrateur.
+      daily-limit-reached: Votre limite quotidienne ({0} fois) a été atteinte. Veuillez devenir membre ou revenir demain.
+      member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
+      membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.
+      membership-active: Vous êtes actuellement membre, utilisation quotidienne {0} fois, restant {1} fois.
+      non-member-usage: Vous êtes actuellement un utilisateur régulier, utilisation quotidienne {0} fois, utilisé {1} fois aujourd'hui, restant {2} fois.
+      cooldown: Temps de recharge de dessin actif, veuillez attendre {0} secondes.
+      inpaint-step1: L'image originale a été assombrie. Veuillez peindre en blanc les zones que vous souhaitez repeindre, puis renvoyez-la dans les 120 secondes.
+      inpaint-step2: Veuillez envoyer l'image avec les zones peintes en blanc
+      inpaint-timeout: Délai dépassé, l'inpainting a été annulé.
+      inpaint-no-mask: Aucune image détectée, l'inpainting a été annulé.
+      inpaint-error: Échec du traitement de l'inpainting, veuillez réessayer.
+      inpaint-url-expired: Le lien de l'image a expiré.
+  
+  novelai.reset-queue:
+    description: Réinitialiser le statut de la file d'attente utilisateur
+    usage: Réinitialiser le compteur de file d'attente et le temps de recharge pour un utilisateur spécifié
     options:
-      scale: Mise à l'échelle de
-      resolution: Mise à l'échelle à
-      crop: Recadrer à la taille avant de l'agrandissement.
-      upscaler: Définir l'agrandisseur
-      upscaler2: Définir l'agrandisseur 2
-      upscaler2visibility: Définir la visibilité de l'agrandisseur 2
-      upscaleFirst: Agrandir les images avant de restaurer les visages
+      user: ID de l'utilisateur cible
     messages:
-      expect-image: Attendrez-vous une image.
-      download-error: Une erreur d'analyse syntaxique de l'image s'est produite.
+      default: Le statut de la file d'attente pour l'utilisateur {0} a été réinitialisé
+      invalid-user: ID d'utilisateur invalide
+      permission-denied: Autorisations insuffisantes
+
+  novelai.queue:
+    description: Interroger le statut de la file d'attente de dessin NAI
+    usage: Afficher le nombre actuel de tâches dans la file d'attente et vos tâches
+
+  novelai.upscale:
+    description: Agrandissement d'image par IA
+
+    shortcuts:
+      upscale: agrandir
+
+    options:
+      scale: Définir le facteur d'agrandissement
+      resolution: Définir la taille d'agrandissement
+      crop: Recadrer pour s'adapter à la taille
+      upscaler: Définir le modèle d'agrandissement
+      upscaler2: Définir le modèle d'agrandissement 2
+      upscaler2visibility: Définir la visibilité de l'agrandisseur 2
+      upscaleFirst: Agrandir avant la restauration du visage
+
+    messages:
+      expect-image: Veuillez fournir une image.
+      download-error: Échec de l'analyse de l'image.
       unknown-error: Une erreur inconnue s'est produite.
+      image-review-failed: La modération d'image a échoué, peut contenir du contenu inapproprié. Veuillez modifier vos tags et réessayer.
+      image-review-error: Erreur lors de la modération d'image, veuillez réessayer plus tard.
+
+  novelai.redraw:
+    description: Redessiner
+    usage: |-
+      Modifiez la balise <redraw> ajoutée par le plugin novelai-bot et exécutez à nouveau la commande pour redessiner la dernière image.
+      
+  novelai.member:
+    description: Système d'adhésion
+    usage: |-
+      Interroger ou définir le statut d'adhésion. Les administrateurs peuvent définir le statut d'adhésion d'autres utilisateurs.
+      Exemples :
+      membre  Interroger votre propre statut d'adhésion
+      membre -u ID (Interroger le statut d'adhésion d'un utilisateur spécifique)
+      membre -d 30 (Vous définir comme membre pour 30 jours)
+      membre -u ID -d 30 (Définir un utilisateur spécifique comme membre pour 30 jours)
+      membre -c (Annuler votre propre adhésion)
+      membre -u ID -c (Annuler l'adhésion d'un utilisateur spécifique)
+      membre -l (Afficher la liste des membres)
+      membre -l -p 2 (Afficher la liste des membres, page 2)
+      membre -l -s 20 (Afficher la liste des membres, 20 par page, trié par niveau d'adhésion)
+    messages:
+      queue-position: "File d'attente totale : {0} tâches | Votre file d'attente : {1} tâches"
+      queue-full: Limite de la file d'attente atteinte ({0}), veuillez réessayer plus tard
+      exceed-user-queue: Votre limite de tâches ({0}) a été atteinte, temps de recharge actif
+      penalty-cooldown: En raison du dépassement de la file d'attente, veuillez attendre {0} secondes
+      redraw-queued: "{0} tâche(s) de redessin ajoutée(s) à la file d'attente (Total : {1} | Vos : {2})"
+      exceed-max-iteration: Nombre maximum de générations dépassé.
+      expect-prompt: Veuillez entrer des tags.
+      expect-image: Veuillez fournir une image.
+      too-many-images: Trop d'images.
+      invalid-content: Contenu invalide dans l'entrée.
+      latin-only: Seule l'entrée en anglais est acceptée.
+      too-many-words: Trop de mots dans l'entrée.
+      forbidden-word: L'entrée contient des mots interdits.
+      unknown-error: Une erreur inconnue s'est produite.
+      invalid-token: Token invalide ou expiré, veuillez contacter l'administrateur.
+      all-tokens-invalid: Tous les tokens sont invalides ou expirés, veuillez contacter l'administrateur pour mettre à jour les tokens.
+      unauthorized: Token non autorisé, l'abonnement peut nécessiter un renouvellement. Veuillez contacter l'administrateur.
+      daily-limit-reached: Votre limite quotidienne ({0} fois) a été atteinte. Veuillez devenir membre ou revenir demain.
+      member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
+      membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.
+      membership-active: Vous êtes actuellement membre, utilisation quotidienne {0} fois, restant {1} fois.
+      non-member-usage: Vous êtes actuellement un utilisateur régulier, utilisation quotidienne {0} fois, utilisé {1} fois aujourd'hui, restant {2} fois.
+      cooldown: Temps de recharge de dessin actif, veuillez attendre {0} secondes.
+      response-error: Erreur inconnue survenue ({0}).
+      request-timeout: Délai d'attente de la requête dépassé.
+      request-failed: Échec de la requête ({0}), veuillez réessayer plus tard.
+      empty-response: Le serveur a renvoyé une image vide, veuillez réessayer plus tard.

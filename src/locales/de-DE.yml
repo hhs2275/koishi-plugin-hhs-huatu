@@ -1,70 +1,175 @@
 commands:
   novelai:
-    description: AI 画图
+    description: KI-Bildgenerierung
     usage: |-
-      输入用逗号隔开的英文标签，例如 Mr.Quin, dark sword, red eyes。
-      查找标签可以使用 Danbooru。
-      快来给仓库点个 star 吧：https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      Geben Sie durch Kommas getrennte englische Tags ein, z.B. Mr.Quin, dark sword, red eyes.
+      Verfügbare Tags finden Sie auf Danbooru.
+      Geben Sie dem Repository einen Stern: https://github.com/hhs2275/koishi-plugin-hhs-huatu
+      
+      Die Bildprüfungsfunktion unterstützt jetzt Gruppenfilterung. Sie können in der Konfiguration festlegen, dass die Prüfung nur in bestimmten Gruppen aktiviert wird.
+
+    shortcuts:
+      imagine: malen|zeichnen
+      enhance: verbessern
+
     options:
-      enhance: 图片增强模式
-      model: 设定生成模型
-      resolution: 设定图片尺寸
-      override: 禁用默认标签
-      sampler: 设置采样器
-      seed: 设置随机种子
-      steps: 设置迭代步数
-      scale: 设置对输入的服从度
-      strength: 图片修改幅度
-      noise: 图片噪声强度
-      hiresFix: 启用高分辨率修复
-      undesired: 排除标签
-      noTranslator: 禁用自动翻译
-      iterations: 设置绘制次数
+      enhance: Bildverbesserungsmodus
+      model: Generierungsmodell festlegen
+      resolution: |-
+        Bildgröße festlegen
+        portrait: Hochformat (832x1216)
+        square: Quadratisch (1024x1024)
+        landscape: Querformat (1216x832)
+      override: Standard-Tags deaktivieren
+      sampler: Sampler festlegen
+      seed: Zufalls-Seed festlegen
+      steps: Iterationsschritte festlegen
+      scale: CFG-Skala festlegen
+      rescale: CFG-Skalierungskorrektur (0-1)
+      strength: Bildänderungsstärke
+      noise: Bildrauschenstärke
+      hiresFix: Hochauflösende Korrektur aktivieren
+      undesired: Negative Tags
+      noTranslator: Automatische Übersetzung deaktivieren
+      iterations: Anzahl der Generierungen festlegen
+      batch: Batch-Größe festlegen
+      chars: Charakterbeschreibungen festlegen, mit Anführungszeichen umschließen, mit Semikolon `;` oder `；` trennen
+      inpaint: Inpainting-Modus aktivieren
+      smea: SMEA aktivieren
+      smeaDyn: DYN aktivieren
+      scheduler: Scheduler festlegen
+      decrisper: Dynamischer Schwellenwert aktivieren
+
+
     messages:
-      exceed-max-iteration: 超过最大绘制次数。
-      expect-prompt: 请输入标签。
-      expect-image: 请输入图片。
-      latin-only: 只接受英文输入。
-      too-many-words: 输入的单词数量过多。
-      forbidden-word: 输入含有违禁词。
-      concurrent-jobs: |-
-        <random>
-        <>等会再约稿吧，我已经忙不过来了……</>
-        <>是数位板没电了，才…才不是我不想画呢！</>
-        <>那你得先教我画画（理直气壮</>
-        </random>
-      waiting: |-
-        <random>
-        <>少女绘画中……</>
-        <>在画了在画了</>
-        <>你就在此地不要走动，等我给你画一幅</>
-        </random>
-      pending: 在画了在画了，不过前面还有 {0} 个稿……
-      invalid-size: 增强功能仅适用于被生成的图片。普通的 img2img 请直接使用「约稿」而不是「增强」。
-      invalid-resolution: 非法的图片尺寸。宽高必须都为 64 的倍数。
-      custom-resolution-unsupported: 不支持自定义图片尺寸。
-      file-too-large: 文件体积过大。
-      unsupported-file-type: 不支持的文件格式。
-      download-error: 图片解析失败。
-      unknown-error: 发生未知错误。
-      response-error: 发生未知错误 ({0})。
-      empty-response: 服务器返回了空白图片，请稍后重试。
-      request-failed: 请求失败 ({0})，请稍后重试。
-      request-timeout: 请求超时。
-      invalid-password: 邮箱或密码错误。
-      invalid-token: 令牌无效或已过期，请联系管理员。
-      unauthorized: 令牌未授权，可能需要续费，请联系管理员。
+      queue-position: Aktuell {0} Aufgaben in der Warteschlange, Sie haben {1} Aufgaben in Bearbeitung
+      queue-full: Maximale Warteschlangenkapazität erreicht ({0}), bitte später erneut versuchen
+      exceed-user-queue: Ihr Aufgabenlimit ({0}) wurde erreicht, Abklingzeit aktiv
+      penalty-cooldown: Aufgrund der Warteschlangenüberlastung müssen Sie {0} Sekunden warten
+      redraw-queued: "{0} Neuzeichnungs-Aufgabe(n) zur Warteschlange hinzugefügt (Gesamt: {1} | Ihre: {2})"
+      exceed-max-iteration: Maximale Generierungsanzahl überschritten.
+      expect-prompt: Bitte geben Sie Tags ein.
+      expect-image: Bitte geben Sie ein Bild ein.
+      too-many-images: Zu viele Bilder.
+      invalid-content: Ungültiger Inhalt in der Eingabe.
+      latin-only: Nur englische Eingaben werden akzeptiert.
+      too-many-words: Zu viele Wörter in der Eingabe.
+      forbidden-word: Eingabe enthält verbotene Wörter.
+      concurrent-jobs: Bitte später erneut versuchen, ich bin gerade überlastet...
+      waiting: "Gesamtwarteschlange: {0} Aufgaben | Ihre Warteschlange: {1} Aufgaben"
+      pending: "Gesamtwarteschlange: {0} Aufgaben | Ihre Warteschlange: {1} Aufgaben"
+      exceed-redraw-limit: Maximales Neuzeichnungslimit überschritten ({0})
+      invalid-size: Die Verbesserungsfunktion ist nur für generierte Bilder verfügbar. Für normales img2img verwenden Sie bitte „malen" statt „verbessern".
+      invalid-resolution: Ungültige Bildgröße. Breite und Höhe müssen Vielfache von 64 sein.
+      custom-resolution-unsupported: Benutzerdefinierte Bildgröße wird nicht unterstützt.
+      file-too-large: Datei zu groß.
+      unsupported-file-type: Nicht unterstütztes Dateiformat
+      download-error: Bilddownload fehlgeschlagen, der Link ist möglicherweise abgelaufen.
+      unknown-error: Ein unbekannter Fehler ist aufgetreten.
+      image-review-failed: Bildprüfung nicht bestanden, möglicherweise unangemessener Inhalt. Bitte ändern Sie Ihre Tags und versuchen Sie es erneut.
+      image-review-failed-muted: Bildprüfung nicht bestanden, möglicherweise unangemessener Inhalt. Sie wurden für {0} Sekunden stummgeschaltet
+      image-review-error: Fehler bei der Bildprüfung, bitte später erneut versuchen.
+      response-error: Unbekannter Fehler aufgetreten ({0}).
+      empty-response: Server hat ein leeres Bild zurückgegeben, bitte später erneut versuchen.
+      request-failed: Anfrage fehlgeschlagen ({0}), bitte später erneut versuchen.
+      request-timeout: Anfrage-Timeout.
+      invalid-password: E-Mail oder Passwort falsch.
+      invalid-token: Token ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
+      all-tokens-invalid: Alle Token sind ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
+      unauthorized: Token nicht autorisiert, möglicherweise ist eine Verlängerung erforderlich. Bitte kontaktieren Sie den Administrator.
+      daily-limit-reached: Ihr tägliches Limit ({0} Mal) wurde erreicht. Bitte werden Sie Mitglied oder kommen Sie morgen wieder.
+      member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
+      membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.
+      membership-active: Sie sind derzeit Mitglied, tägliche Nutzung {0} Mal, verbleibend {1} Mal.
+      non-member-usage: Sie sind derzeit ein normaler Benutzer, täglich {0} Mal nutzbar, heute {1} Mal verwendet, verbleibend {2} Mal.
+      cooldown: Abklingzeit aktiv, bitte warten Sie {0} Sekunden.
+      inpaint-step1: Das Originalbild wurde abgedunkelt. Bitte malen Sie weiße Bereiche auf die Stellen, die neu gezeichnet werden sollen, und senden Sie es innerhalb von 120 Sekunden zurück.
+      inpaint-step2: Bitte senden Sie das Bild mit den weiß markierten Bereichen
+      inpaint-timeout: Timeout, Inpainting wurde abgebrochen.
+      inpaint-no-mask: Kein Bild erkannt, Inpainting wurde abgebrochen.
+      inpaint-error: Inpainting-Verarbeitung fehlgeschlagen, bitte erneut versuchen.
+      inpaint-url-expired: Bildlink ist abgelaufen.
+  
+  novelai.reset-queue:
+    description: Benutzerwarteschlangenstatus zurücksetzen
+    usage: Warteschlangenzähler und Abklingzeit für einen bestimmten Benutzer zurücksetzen
+    options:
+      user: Zielbenutzer-ID
+    messages:
+      default: Warteschlangenstatus für Benutzer {0} wurde zurückgesetzt
+      invalid-user: Ungültige Benutzer-ID
+      permission-denied: Unzureichende Berechtigung
+
+  novelai.queue:
+    description: NAI-Zeichnungswarteschlangenstatus abfragen
+    usage: Aktuelle Anzahl der Aufgaben in der Warteschlange und Ihre Aufgaben anzeigen
+
   novelai.upscale:
-    description: AI 放大图片
+    description: KI-Bildvergrößerung
+
+    shortcuts:
+      upscale: vergrößern
+
     options:
-      scale: 设置放大倍数
-      resolution: 设定放大尺寸
-      crop: 是否裁剪以适应尺寸
-      upscaler: 设置放大模型
-      upscaler2: 设置放大模型 2
-      upscaler2visibility: 设置放大模型 2 的可见度
-      upscaleFirst: 先放大再执行面部修复
+      scale: Vergrößerungsfaktor festlegen
+      resolution: Zielgröße festlegen
+      crop: Zuschneiden zur Größenanpassung
+      upscaler: Upscaler-Modell festlegen
+      upscaler2: Upscaler-Modell 2 festlegen
+      upscaler2visibility: Sichtbarkeit von Upscaler 2 festlegen
+      upscaleFirst: Vor Gesichtswiederherstellung vergrößern
+
     messages:
-      expect-image: 请输入图片。
-      download-error: 图片解析失败。
-      unknown-error: 发生未知错误。
+      expect-image: Bitte geben Sie ein Bild ein.
+      download-error: Bildanalyse fehlgeschlagen.
+      unknown-error: Ein unbekannter Fehler ist aufgetreten.
+      image-review-failed: Bildprüfung nicht bestanden, möglicherweise unangemessener Inhalt. Bitte ändern Sie Ihre Tags und versuchen Sie es erneut.
+      image-review-error: Fehler bei der Bildprüfung, bitte später erneut versuchen.
+
+  novelai.redraw:
+    description: Neuzeichnen
+    usage: |-
+      Ändern Sie das vom novelai-bot Plugin hinzugefügte <redraw>-Tag und führen Sie den Befehl erneut aus, um das letzte Bild neu zu zeichnen.
+      
+  novelai.member:
+    description: Mitgliedschaftssystem
+    usage: |-
+      Mitgliedschaftsstatus abfragen oder festlegen. Administratoren können den Mitgliedschaftsstatus anderer Benutzer festlegen.
+      Beispiele:
+      mitglied  Eigenen Mitgliedschaftsstatus abfragen
+      mitglied -u ID (Mitgliedschaftsstatus eines bestimmten Benutzers abfragen)
+      mitglied -d 30 (Sich selbst 30 Tage Mitgliedschaft geben)
+      mitglied -u ID -d 30 (Einem bestimmten Benutzer 30 Tage Mitgliedschaft geben)
+      mitglied -c (Eigene Mitgliedschaft kündigen)
+      mitglied -u ID -c (Mitgliedschaft eines bestimmten Benutzers kündigen)
+      mitglied -l (Mitgliederliste anzeigen)
+      mitglied -l -p 2 (Mitgliederliste anzeigen, Seite 2)
+      mitglied -l -s 20 (Mitgliederliste anzeigen, 20 pro Seite, nach Mitgliedschaftsstufe sortiert)
+    messages:
+      queue-position: "Gesamtwarteschlange: {0} Aufgaben | Ihre Warteschlange: {1} Aufgaben"
+      queue-full: Maximale Warteschlangenkapazität erreicht ({0}), bitte später erneut versuchen
+      exceed-user-queue: Ihr Aufgabenlimit ({0}) wurde erreicht, Abklingzeit aktiv
+      penalty-cooldown: Aufgrund der Warteschlangenüberlastung müssen Sie {0} Sekunden warten
+      redraw-queued: "{0} Neuzeichnungs-Aufgabe(n) zur Warteschlange hinzugefügt (Gesamt: {1} | Ihre: {2})"
+      exceed-max-iteration: Maximale Generierungsanzahl überschritten.
+      expect-prompt: Bitte geben Sie Tags ein.
+      expect-image: Bitte geben Sie ein Bild ein.
+      too-many-images: Zu viele Bilder.
+      invalid-content: Ungültiger Inhalt in der Eingabe.
+      latin-only: Nur englische Eingaben werden akzeptiert.
+      too-many-words: Zu viele Wörter in der Eingabe.
+      forbidden-word: Eingabe enthält verbotene Wörter.
+      unknown-error: Ein unbekannter Fehler ist aufgetreten.
+      invalid-token: Token ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
+      all-tokens-invalid: Alle Token sind ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
+      unauthorized: Token nicht autorisiert, möglicherweise ist eine Verlängerung erforderlich. Bitte kontaktieren Sie den Administrator.
+      daily-limit-reached: Ihr tägliches Limit ({0} Mal) wurde erreicht. Bitte werden Sie Mitglied oder kommen Sie morgen wieder.
+      member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
+      membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.
+      membership-active: Sie sind derzeit Mitglied, tägliche Nutzung {0} Mal, verbleibend {1} Mal.
+      non-member-usage: Sie sind derzeit ein normaler Benutzer, täglich {0} Mal nutzbar, heute {1} Mal verwendet, verbleibend {2} Mal.
+      cooldown: Abklingzeit aktiv, bitte warten Sie {0} Sekunden.
+      response-error: Unbekannter Fehler aufgetreten ({0}).
+      request-timeout: Anfrage-Timeout.
+      request-failed: Anfrage fehlgeschlagen ({0}), bitte später erneut versuchen.
+      empty-response: Server hat ein leeres Bild zurückgegeben, bitte später erneut versuchen.
