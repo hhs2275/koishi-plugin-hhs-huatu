@@ -46,7 +46,7 @@ commands:
       queue-full: Queue limit reached ({0}), please try again later
       exceed-user-queue: Your task limit ({0}) has been reached, cooldown active
       penalty-cooldown: Due to queue overflow, please wait {0} seconds before continuing
-      redraw-queued: Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})
+      redraw-queued: "Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})"
       exceed-max-iteration: Exceeded maximum generation count.
       expect-prompt: Please enter tags.
       expect-image: Please provide an image.
@@ -150,7 +150,7 @@ commands:
       queue-full: Queue limit reached ({0}), please try again later
       exceed-user-queue: Your task limit ({0}) has been reached, cooldown active
       penalty-cooldown: Due to queue overflow, please wait {0} seconds before continuing
-      redraw-queued: Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})
+      redraw-queued: "Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})"
       exceed-max-iteration: Exceeded maximum generation count.
       expect-prompt: Please enter tags.
       expect-image: Please provide an image.

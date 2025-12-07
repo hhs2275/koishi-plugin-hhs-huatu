@@ -76,7 +76,8 @@ export const usage = `
 
 ### 🗓️ 开发计划
 - [ ] **点数控制系统**：精细化控制用户点数消耗（配置项完善中）。
-- [ ] **氛围传输功能**：实现图片风格与氛围的快速迁移。
+- [ ] **氛围传输功能**：实现novelai官网的氛围传输功能。
+- [ ] **角色参考功能**：实现novelai官网的角色参考功能。
 
 ---
 
@@ -234,9 +235,7 @@ export function apply(ctx: Context, config: Config) {
 
   const thirdParty = () => !['login', 'token'].includes(config.type)
 
-  const restricted: HiddenCallback = (session) => {
-    return !thirdParty() && useFilter(config.features.anlas)(session)
-  }
+
 
   const noImage: HiddenCallback = (session) => {
     return !useFilter(config.features.image)(session)
@@ -298,9 +297,7 @@ export function apply(ctx: Context, config: Config) {
     const haveInput = !!input?.trim()
     if (!haveInput && !config.defaultPromptSw) return session.execute('help novelai')
 
-    if (options.resolution?.custom && restricted(session)) {
-      return session.text('commands.novelai.messages.custom-resolution-unsupported')
-    }
+
 
     const { batch = 1, iterations = 1 } = options
     const total = batch * iterations
@@ -312,7 +309,7 @@ export function apply(ctx: Context, config: Config) {
     const allowImage = useFilter(config.features.image)(session)
 
     let imgUrl: string, image: ImageData
-    if (!restricted(session) && haveInput) {
+    if (haveInput) {
       input = h('', h.transform(h.parse(input), {
         img(attrs) {
           if (!allowImage) throw new SessionError('commands.novelai.messages.invalid-content')
@@ -326,24 +323,18 @@ export function apply(ctx: Context, config: Config) {
         return session.text('commands.novelai.messages.expect-image')
       }
 
-      if (options.inpaint && !imgUrl) {
-        return session.text('commands.novelai.messages.expect-image')
+      // 局部重绘模式：使用 options._originalUrl（在命令 action 中已保存）
+      if (options.inpaint) {
+        if (options._originalUrl) {
+          imgUrl = options._originalUrl
+        } else if (!imgUrl) {
+          return session.text('commands.novelai.messages.expect-image')
+        }
       }
 
       if (!input.trim() && !config.basePrompt) {
         return session.text('commands.novelai.messages.expect-prompt')
       }
-    } else {
-      input = haveInput ? h('', h.transform(h.parse(input), {
-        image(attrs) {
-          throw new SessionError('commands.novelai.messages.invalid-content')
-        },
-      })).toString(true) : input
-      delete options.enhance
-      delete options.steps
-      delete options.noise
-      delete options.strength
-      delete options.override
     }
 
     if (!allowText && !imgUrl) {
@@ -1124,18 +1115,18 @@ export function apply(ctx: Context, config: Config) {
     .userFields(['authority'])
     .shortcut('imagine', { i18n: true, fuzzy: true })
     .shortcut('enhance', { i18n: true, fuzzy: true, options: { enhance: true } })
-    .option('enhance', '-e', { hidden: some(restricted, thirdParty, noImage) })
+    .option('enhance', '-e', { hidden: some(thirdParty, noImage) })
     .option('model', '-m <model>', { type: models, hidden: thirdParty })
     .option('resolution', '-r <resolution>', { type: resolution })
     .option('output', '-o', { type: ['minimal', 'default', 'verbose'] })
-    .option('override', '-O', { hidden: restricted })
+    .option('override', '-O')
     .option('sampler', '-s <sampler>')
     .option('seed', '-x <seed:number>')
-    .option('steps', '-t <step>', { type: step, hidden: restricted })
+    .option('steps', '-t <step>', { type: step })
     .option('scale', '-c <scale:number>')
     .option('rescale', '-R <rescale:number>')
-    .option('noise', '-n <noise:number>', { hidden: some(restricted, thirdParty) })
-    .option('strength', '-N <strength:number>', { hidden: restricted })
+    .option('noise', '-n <noise:number>', { hidden: thirdParty })
+    .option('strength', '-N <strength:number>')
     .option('hiresFix', '-H', { hidden: () => config.type !== 'sd-webui' })
     .option('hiresFixSteps', '<step>', { type: step, hidden: () => config.type !== 'sd-webui' })
     .option('smea', '-S', { hidden: () => config.model !== 'nai-v3' })
@@ -1156,7 +1147,7 @@ export function apply(ctx: Context, config: Config) {
     .option('iterations', '-i <iterations:posint>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('batch', '-b <batch:option>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('chars', '-K <chars>')
-    .option('inpaint', '-M', { hidden: some(restricted, thirdParty) })
+    .option('inpaint', '-M', { hidden: thirdParty })
     .option('ignoreSpace', '-I', { hidden: true })
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
@@ -1215,8 +1206,26 @@ export function apply(ctx: Context, config: Config) {
             },
           })
 
+          // 2. 如果没有图片，提示用户发送并等待
           if (!imgUrl) {
-            return session.text('commands.novelai.messages.expect-image')
+            await session.send(session.text('commands.novelai.messages.inpaint-wait-image'))
+            const imageResponse = await session.prompt(60000)
+
+            if (!imageResponse) {
+              return session.text('commands.novelai.messages.inpaint-timeout')
+            }
+
+            // 解析用户发送的图片
+            h.transform(h.parse(imageResponse), {
+              img(attrs) {
+                imgUrl = attrs.src
+                return ''
+              },
+            })
+
+            if (!imgUrl) {
+              return session.text('commands.novelai.messages.inpaint-no-mask')
+            }
           }
 
           // 2. 下载原图
