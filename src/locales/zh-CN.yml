@@ -64,7 +64,7 @@ commands:
       custom-resolution-unsupported: 不支持自定义图片尺寸。
       file-too-large: 文件体积过大。
       unsupported-file-type: 不支持的文件格式
-      download-error: 图片解析失败。
+      download-error: 图片下载失败，链接可能已过期。
       unknown-error: 发生未知错误。
       image-review-failed: 图片审核未通过，可能包含不适内容，请尝试修改提示词后重试。
       image-review-failed-muted: 图片审核未通过，可能包含不适内容，你已被禁言{0}秒
@@ -88,6 +88,7 @@ commands:
       inpaint-timeout: 等待超时，局部重绘已取消。
       inpaint-no-mask: 未检测到图片，局部重绘已取消。
       inpaint-error: 局部重绘处理失败，请重试。
+      inpaint-url-expired: 图片链接已过期。
   
   novelai.reset-queue:
     description: 重置用户队列状态
