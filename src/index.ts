@@ -150,7 +150,7 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
     { pattern: /-T\s*/g, key: 'noTranslator', value: true },
     { pattern: /-i\s+(\d+)/g, key: 'iterations' },
     { pattern: /-b\s+(\d+)/g, key: 'batch' },
-    { pattern: /-I\s*/g, key: 'ignoreSpace', value: true },
+
   ]
 
   // 提取选项
@@ -1148,7 +1148,7 @@ export function apply(ctx: Context, config: Config) {
     .option('batch', '-b <batch:option>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('chars', '-K <chars>')
     .option('inpaint', '-M', { hidden: thirdParty })
-    .option('ignoreSpace', '-I', { hidden: true })
+
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
       let input = prompts.join(' ')
@@ -1422,7 +1422,7 @@ export function apply(ctx: Context, config: Config) {
 
   ctx.command('重画 [count:text]')
     .userFields(['authority'])
-    .option('ignoreSpace', '-I', { hidden: true })
+
     .action(async ({ session }, count) => {
       // 获取锁，确保多个重画命令不会同时执行
       await queueSystem.acquireRedrawLock()
@@ -2881,13 +2881,5 @@ NovelAI Director Tools 图像处理工具
         const defryArg = options.defry !== (config.directorToolsDefaultDefry ?? 0) ? ` -d ${options.defry}` : ''
         return session.execute(`director emotion ${emotion}${defryArg}`)
       })
-  }
-}
-
-declare module 'koishi' {
-  namespace Command {
-    interface Config {
-      ignoreSpace?: boolean
-    }
   }
 }

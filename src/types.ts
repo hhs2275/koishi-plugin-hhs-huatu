@@ -169,7 +169,7 @@ export interface Config {
 // Director Tools 相关类型
 export namespace DirectorTools {
   export type ToolType = 'bg-removal' | 'lineart' | 'sketch' | 'colorize' | 'emotion' | 'declutter'
-  
+
   export interface Request {
     height: number
     width: number
@@ -178,11 +178,11 @@ export namespace DirectorTools {
     defry?: number  // 0-5, 用于 colorize 和 emotion
     prompt?: string  // 用于 colorize 和 emotion
   }
-  
+
   // 表情类型（中英文映射）
-  export type Emotion = 
-    | 'neutral' | 'happy' | 'sad' | 'angry' | 'scared' | 'surprised' 
-    | 'tired' | 'excited' | 'nervous' | 'thinking' | 'confused' | 'shy' 
-    | 'disgusted' | 'smug' | 'bored' | 'laughing' | 'irritated' | 'aroused' 
+  export type Emotion =
+    | 'neutral' | 'happy' | 'sad' | 'angry' | 'scared' | 'surprised'
+    | 'tired' | 'excited' | 'nervous' | 'thinking' | 'confused' | 'shy'
+    | 'disgusted' | 'smug' | 'bored' | 'laughing' | 'irritated' | 'aroused'
     | 'embarrassed' | 'worried' | 'love' | 'determined' | 'hurt' | 'playful'
 }
