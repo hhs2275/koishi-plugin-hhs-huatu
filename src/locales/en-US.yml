@@ -39,6 +39,9 @@ commands:
       smeaDyn: Enable DYN
       scheduler: Set Scheduler
       decrisper: Enable Dynamic Thresholding
+      charRef: Enable Character Reference (v4.5 models only)
+      charRefStyle: Reference image style as well
+      charRefFidelity: Set fidelity (0-1, default 1)
 
 
     messages:
@@ -89,6 +92,12 @@ commands:
       inpaint-no-mask: No image detected, inpainting has been cancelled.
       inpaint-error: Inpainting processing failed, please try again.
       inpaint-url-expired: Image link has expired.
+      charref-wait-image: Please send a character reference image within 60 seconds.
+      charref-processing: Processing character reference image...
+      charref-timeout: Timeout, character reference has been cancelled.
+      charref-no-image: No image detected, character reference has been cancelled.
+      charref-error: Character reference processing failed, please try again.
+      charref-model-unsupported: Character reference only supports v4.5 models (nai4-5 or nai4-5c), please switch models and try again.
   
   novelai.reset-queue:
     description: Reset User Queue Status

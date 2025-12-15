@@ -39,6 +39,9 @@ commands:
       smeaDyn: 启用 DYN
       scheduler: 设置调度器
       decrisper: 启用动态阈值
+      charRef: 启用角色参考功能（仅支持 v4.5 模型）
+      charRefStyle: 同时参考图片风格
+      charRefFidelity: 设置保真度 (0-1，默认1)
 
 
     messages:
@@ -90,6 +93,12 @@ commands:
       inpaint-no-mask: 未检测到图片，局部重绘已取消。
       inpaint-error: 局部重绘处理失败，请重试。
       inpaint-url-expired: 图片链接已过期。
+      charref-wait-image: 请在60秒内发送角色参考图片。
+      charref-processing: 正在处理角色参考图片...
+      charref-timeout: 等待超时，角色参考已取消。
+      charref-no-image: 未检测到图片，角色参考已取消。
+      charref-error: 角色参考处理失败，请重试。
+      charref-model-unsupported: 角色参考功能仅支持 v4.5 模型（nai4-5 或 nai4-5c），请切换模型后重试。
   
   novelai.reset-queue:
     description: 重置用户队列状态

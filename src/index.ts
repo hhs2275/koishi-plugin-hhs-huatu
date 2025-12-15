@@ -1,7 +1,7 @@
 import { Computed, Context, Dict, h, Logger, omit, Quester, Session, SessionError, trimSlash } from 'koishi'
 import { Config, modelMap, models, orientMap, parseInput, sampler, upscalers, scheduler } from './config'
 import { ImageData, NovelAI, StableDiffusionWebUI, UserData, DirectorTools } from './types'
-import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact } from './utils'
+import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage } from './utils'
 import { } from '@koishijs/translator'
 import { } from '@koishijs/plugin-help'
 import AdmZip from 'adm-zip'
@@ -664,6 +664,30 @@ export function apply(ctx: Context, config: Config) {
                 }
               }
             }
+
+            // 处理角色参考功能 (Character Reference Image)
+            // 仅支持 v4.5 模型
+            if (options._charRefBase64 && modelSupportsCharacterReference(model)) {
+              const styleAware = options._charRefStyleAware ?? false
+              const fidelity = options._charRefFidelity ?? 1
+
+              // 设置 director_reference 相关参数
+              parameters.director_reference_images = [options._charRefBase64]
+              parameters.director_reference_descriptions = [{
+                caption: {
+                  base_caption: styleAware ? 'character&style' : 'character',
+                  char_captions: [],
+                },
+                legacy_uc: false,
+              }]
+              parameters.director_reference_information_extracted = [1]
+              parameters.director_reference_strength_values = [1]
+              parameters.director_reference_secondary_strength_values = [1 - fidelity]
+
+              if (config.debugLog) {
+                ctx.logger.info(`[CharRef] 已添加角色参考参数: styleAware=${styleAware}, fidelity=${fidelity}, secondaryStrength=${1 - fidelity}`)
+              }
+            }
           }
 
           // 构建最终payload
@@ -1148,6 +1172,9 @@ export function apply(ctx: Context, config: Config) {
     .option('batch', '-b <batch:option>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('chars', '-K <chars>')
     .option('inpaint', '-M', { hidden: thirdParty })
+    .option('charRef', '-I', { hidden: thirdParty })  // Character Reference Image
+    .option('charRefStyle', '--style')  // 同时参考风格
+    .option('charRefFidelity', '-F <fidelity:number>')  // 保真度 0-1
 
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
@@ -1292,6 +1319,78 @@ export function apply(ctx: Context, config: Config) {
         }
       }
       // ========== 局部重绘交互流程结束 ==========
+
+      // ========== 角色参考交互流程（在进入队列之前完成） ==========
+      if (options.charRef) {
+        try {
+          // 获取当前使用的模型
+          const currentModel = modelMap[options.model] || modelMap[config.model] || 'nai-diffusion-4-5-full'
+
+          // 检查模型是否支持角色参考功能
+          if (!modelSupportsCharacterReference(currentModel)) {
+            return session.text('commands.novelai.messages.charref-model-unsupported')
+          }
+
+          // 1. 解析输入中的图片URL
+          let refImgUrl: string
+          h.transform(h.parse(input), {
+            img(attrs) {
+              refImgUrl = attrs.src
+              return ''
+            },
+          })
+
+          // 2. 如果没有图片，提示用户发送
+          if (!refImgUrl) {
+            await session.send(session.text('commands.novelai.messages.charref-wait-image'))
+            const imageResponse = await session.prompt(60000)
+
+            if (!imageResponse) {
+              return session.text('commands.novelai.messages.charref-timeout')
+            }
+
+            // 解析用户发送的图片
+            h.transform(h.parse(imageResponse), {
+              img(attrs) {
+                refImgUrl = attrs.src
+                return ''
+              },
+            })
+
+            if (!refImgUrl) {
+              return session.text('commands.novelai.messages.charref-no-image')
+            }
+          }
+
+          // 3. 从输入中移除图片元素，只保留提示词
+          input = h('', h.transform(h.parse(input), {
+            img() { return '' },
+          })).toString(true)
+
+          // 4. 下载并处理角色参考图片
+          await session.send(session.text('commands.novelai.messages.charref-processing'))
+          const refImage = await download(ctx, refImgUrl)
+          const processedRef = await processCharacterReferenceImage(refImage)
+
+            // 5. 保存处理后的数据到 options
+            ; (options as any)._charRefBase64 = processedRef.base64
+            ; (options as any)._charRefWidth = processedRef.width
+            ; (options as any)._charRefHeight = processedRef.height
+            ; (options as any)._charRefStyleAware = options.charRefStyle ?? false
+            ; (options as any)._charRefFidelity = options.charRefFidelity ?? 1
+
+          if (config.debugLog) {
+            ctx.logger.info(`[CharRef] 角色参考图片处理完成，尺寸: ${processedRef.width}x${processedRef.height}，styleAware: ${options.charRefStyle}, fidelity: ${options.charRefFidelity ?? 1}`)
+          }
+        } catch (err) {
+          ctx.logger.error(err)
+          if (err instanceof NetworkError) {
+            return session.text(err.message, err.params)
+          }
+          return session.text('commands.novelai.messages.charref-error')
+        }
+      }
+      // ========== 角色参考交互流程结束 ==========
 
       // 检查用户是否可以添加任务
       const canAddResult = queueSystem.canAddTask(userId)
@@ -2882,4 +2981,131 @@ NovelAI Director Tools 图像处理工具
         return session.execute(`director emotion ${emotion}${defryArg}`)
       })
   }
+
+  // ========== 获取 NAI 账户信息命令 ==========
+  ctx.command('novelai.account', '获取NAI账户信息')
+    .alias('nai账户', 'nai账号', '获取nai账户信息')
+    .userFields(['authority'])
+    .usage('获取所有配置的 NovelAI Token 的账户信息，包括会员等级、订阅状态、到期时间和 Anlas 点数。')
+    .action(async ({ session }) => {
+      // 权限检查：需要 authority > 3
+      if (session.user.authority <= 3) {
+        return '❌ 权限不足，需要管理员权限才能查看账户信息'
+      }
+
+      // 检查登录类型
+      if (!['token', 'login'].includes(config.type)) {
+        return '❌ 此功能仅支持 Token 或账号密码登录方式'
+      }
+
+      // 辅助函数：获取订阅信息
+      const fetchSubscription = async (token: string, label: string): Promise<string> => {
+        try {
+          // 构建请求头
+          const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            ...(config.headers || {})
+          }
+
+          // 调用订阅 API
+          const apiEndpoint = config.apiEndpoint || 'https://api.novelai.net'
+          const response = await ctx.http.get(`${apiEndpoint}/user/subscription`, {
+            headers,
+            timeout: 30000,
+          })
+
+          // 解析响应
+          const tier = response.tier ?? 'N/A'
+          const active = response.active ?? false
+          const expiresAt = response.expiresAt
+          const fixedAnlas = response.trainingStepsLeft?.fixedTrainingStepsLeft ?? 0
+          const purchasedAnlas = response.trainingStepsLeft?.purchasedTrainingSteps ?? 0
+          const totalAnlas = fixedAnlas + purchasedAnlas
+
+          // 格式化到期时间
+          let expiresStr = 'N/A'
+          if (expiresAt && expiresAt > 0) {
+            const expiresDate = new Date(expiresAt * 1000)
+            expiresStr = expiresDate.toLocaleString('zh-CN', {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          }
+
+          // 会员等级映射
+          const tierNames: Record<number, string> = {
+            0: '免费用户',
+            1: 'Tablet (基础会员)',
+            2: 'Scroll (标准会员)',
+            3: 'Opus (高级会员)',
+          }
+          const tierName = tierNames[tier] ?? `等级 ${tier}`
+
+          return (
+            `📋 **${label}**:\n` +
+            `  • 会员等级: ${tierName}\n` +
+            `  • 订阅状态: ${active ? '✅ 激活' : '❌ 未激活'}\n` +
+            `  • 到期时间: ${expiresStr}\n` +
+            `  • Anlas 点数: ${totalAnlas} (月赠: ${fixedAnlas} | 购买: ${purchasedAnlas})`
+          )
+        } catch (err) {
+          let errorMsg = '未知错误'
+          if (err?.response?.status === 401) {
+            errorMsg = 'Token 无效或已过期'
+          } else if (err?.code === 'ETIMEDOUT') {
+            errorMsg = '请求超时'
+          } else if (err?.message) {
+            errorMsg = err.message
+          }
+          return `📋 **${label}**: ❌ 获取失败 - ${errorMsg}`
+        }
+      }
+
+      const results: string[] = []
+
+      if (config.type === 'token') {
+        // Token 登录方式：可能有多个 token
+        const tokens = Array.isArray(config.token) ? config.token : [config.token]
+
+        if (!tokens || tokens.length === 0 || !tokens[0]) {
+          return '❌ 未配置任何 Token'
+        }
+
+        await session.send(`🔍 正在获取 ${tokens.length} 个账户的信息...`)
+
+        for (let i = 0; i < tokens.length; i++) {
+          const token = tokens[i]
+          if (!token || typeof token !== 'string' || !token.trim()) {
+            results.push(`📋 **Token[${i}]**: ❌ Token 无效或为空`)
+            continue
+          }
+          const result = await fetchSubscription(token, `Token[${i}]`)
+          results.push(result)
+        }
+      } else if (config.type === 'login') {
+        // 账号密码登录方式：只有一个账户
+        await session.send('🔍 正在获取账户信息...')
+
+        try {
+          // 使用现有的 getToken 函数获取 token
+          const token = await getToken(session)
+          const result = await fetchSubscription(token, '账户')
+          results.push(result)
+        } catch (err) {
+          let errorMsg = '未知错误'
+          if (err instanceof NetworkError) {
+            errorMsg = session.text(err.message, err.params)
+          } else if (err?.message) {
+            errorMsg = err.message
+          }
+          results.push(`📋 **账户**: ❌ 获取失败 - ${errorMsg}`)
+        }
+      }
+
+      return `🎨 NovelAI 账户信息\n\n${results.join('\n\n')}`
+    })
 }

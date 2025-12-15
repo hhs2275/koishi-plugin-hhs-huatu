@@ -697,3 +697,148 @@ function dilateMaskBuffer(data: Buffer, width: number, height: number, minPenSiz
 
   return currentData
 }
+
+// ========== Character Reference Image 相关函数 ==========
+
+/**
+ * 检查模型是否支持 Character Reference Image 功能
+ * 仅 v4.5 模型支持此功能
+ * @param model 模型名称
+ * @returns 是否支持角色参考
+ */
+export function modelSupportsCharacterReference(model: string): boolean {
+  const supportedModels = [
+    'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-5-full',
+  ]
+  return supportedModels.includes(model)
+}
+
+/**
+ * 将角色参考图片调整到 NovelAI 要求的尺寸
+ * 参考 Auto-NovelAI-Refactor 的 process_image_by_orientation 函数
+ * - 横图：1536×1024
+ * - 竖图：1024×1536
+ * - 方图：1472×1472
+ * 
+ * @param imageData 原始图片数据
+ * @returns 处理后的图片 base64（不含 data: 前缀）和尺寸信息
+ */
+export async function processCharacterReferenceImage(imageData: ImageData): Promise<{
+  base64: string
+  width: number
+  height: number
+}> {
+  const sharp = await import('sharp')
+  const buffer = Buffer.from(imageData.buffer)
+
+  // 获取原始尺寸
+  const metadata = await sharp.default(buffer).metadata()
+  const origWidth = metadata.width
+  const origHeight = metadata.height
+
+  let targetWidth: number
+  let targetHeight: number
+  let resizedBuffer: Buffer
+
+  if (origWidth > origHeight) {
+    // 横图：目标 1536×1024
+    targetWidth = 1536
+    targetHeight = 1024
+    const aspectRatio = origWidth / origHeight
+    const targetAspect = 1536 / 1024
+
+    if (aspectRatio > targetAspect) {
+      // 图片更宽，以宽度为准缩放，上下填充
+      const newWidth = 1536
+      const newHeight = Math.round(origHeight * (1536 / origWidth))
+      const yOffset = Math.floor((1024 - newHeight) / 2)
+
+      resizedBuffer = await sharp.default(buffer)
+        .resize(newWidth, newHeight, { fit: 'fill' })
+        .extend({
+          top: yOffset,
+          bottom: 1024 - newHeight - yOffset,
+          left: 0,
+          right: 0,
+          background: { r: 0, g: 0, b: 0 }
+        })
+        .png()
+        .toBuffer()
+    } else {
+      // 图片更高，以高度为准缩放，左右填充
+      const newHeight = 1024
+      const newWidth = Math.round(origWidth * (1024 / origHeight))
+      const xOffset = Math.floor((1536 - newWidth) / 2)
+
+      resizedBuffer = await sharp.default(buffer)
+        .resize(newWidth, newHeight, { fit: 'fill' })
+        .extend({
+          top: 0,
+          bottom: 0,
+          left: xOffset,
+          right: 1536 - newWidth - xOffset,
+          background: { r: 0, g: 0, b: 0 }
+        })
+        .png()
+        .toBuffer()
+    }
+  } else if (origHeight > origWidth) {
+    // 竖图：目标 1024×1536
+    targetWidth = 1024
+    targetHeight = 1536
+    const aspectRatio = origWidth / origHeight
+    const targetAspect = 1024 / 1536
+
+    if (aspectRatio > targetAspect) {
+      // 图片比目标更宽，以宽度为准缩放，上下填充
+      const newWidth = 1024
+      const newHeight = Math.round(origHeight * (1024 / origWidth))
+      const yOffset = Math.floor((1536 - newHeight) / 2)
+
+      resizedBuffer = await sharp.default(buffer)
+        .resize(newWidth, newHeight, { fit: 'fill' })
+        .extend({
+          top: yOffset,
+          bottom: 1536 - newHeight - yOffset,
+          left: 0,
+          right: 0,
+          background: { r: 0, g: 0, b: 0 }
+        })
+        .png()
+        .toBuffer()
+    } else {
+      // 图片比目标更细长，以高度为准缩放，左右填充
+      const newHeight = 1536
+      const newWidth = Math.round(origWidth * (1536 / origHeight))
+      const xOffset = Math.floor((1024 - newWidth) / 2)
+
+      resizedBuffer = await sharp.default(buffer)
+        .resize(newWidth, newHeight, { fit: 'fill' })
+        .extend({
+          top: 0,
+          bottom: 0,
+          left: xOffset,
+          right: 1024 - newWidth - xOffset,
+          background: { r: 0, g: 0, b: 0 }
+        })
+        .png()
+        .toBuffer()
+    }
+  } else {
+    // 方图：目标 1472×1472
+    targetWidth = 1472
+    targetHeight = 1472
+
+    resizedBuffer = await sharp.default(buffer)
+      .resize(targetWidth, targetHeight, { fit: 'fill' })
+      .png()
+      .toBuffer()
+  }
+
+  return {
+    base64: resizedBuffer.toString('base64'),
+    width: targetWidth,
+    height: targetHeight
+  }
+}
