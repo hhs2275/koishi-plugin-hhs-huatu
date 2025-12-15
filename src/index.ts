@@ -1820,16 +1820,10 @@ export function apply(ctx: Context, config: Config) {
     }
     return next()
   })
-  ctx.command('novelai.reset-queue <user>', '重置用户队列状态')
-    .userFields(['authority'])
+  ctx.command('novelai.reset-queue <user>', '重置用户队列状态', { authority: 3 })
     .action(({ session }, user) => {
       const targetUserId = user?.replace(/^@|&#\d+;?/g, '')
       if (!targetUserId) return '请输入要重置的用户ID'
-
-      // 权限检查（示例：需要3级权限）
-      if (session.user.authority < 3) {
-        return '权限不足'
-      }
 
       queueSystem.resetUserQueue(targetUserId)
       return `已重置用户 ${targetUserId} 的队列状态`
@@ -2049,8 +2043,7 @@ export function apply(ctx: Context, config: Config) {
 
   // 会员系统调试指令（仅在启用时注册）
   if (config.memberDebugCommandEnabled) {
-    ctx.command('novelai.member-debug', '会员系统调试指令')
-      .userFields(['authority'])
+    ctx.command('novelai.member-debug', '会员系统调试指令', { authority: config.memberDebugCommandAuthLv })
       .alias('会员调试')
       .option('cleanup', '-c 立即执行会员信息清理')
       .option('remind', '-r 立即执行会员到期提醒')
@@ -2058,11 +2051,6 @@ export function apply(ctx: Context, config: Config) {
       .option('resetUsage', '-u <userId:string> 重置指定用户的使用次数')
       .option('addDaysAll', '-a <days:number> 给所有会员增加天数')
       .action(async ({ session, options }) => {
-        // 权限检查
-        if (session.user.authority < config.memberDebugCommandAuthLv) {
-          return `权限不足，需要权限等级 ${config.memberDebugCommandAuthLv} 或以上`
-        }
-
         // 如果会员系统未启用
         if (!config.membershipEnabled) {
           return '会员系统未启用'
@@ -2983,16 +2971,10 @@ NovelAI Director Tools 图像处理工具
   }
 
   // ========== 获取 NAI 账户信息命令 ==========
-  ctx.command('novelai.account', '获取NAI账户信息')
+  ctx.command('novelai.account', '获取NAI账户信息', { authority: 4 })
     .alias('nai账户', 'nai账号', '获取nai账户信息')
-    .userFields(['authority'])
     .usage('获取所有配置的 NovelAI Token 的账户信息，包括会员等级、订阅状态、到期时间和 Anlas 点数。')
     .action(async ({ session }) => {
-      // 权限检查：需要 authority > 3
-      if (session.user.authority <= 3) {
-        return '❌ 权限不足，需要管理员权限才能查看账户信息'
-      }
-
       // 检查登录类型
       if (!['token', 'login'].includes(config.type)) {
         return '❌ 此功能仅支持 Token 或账号密码登录方式'
