@@ -35,12 +35,14 @@ commands:
       batch: 设置绘制批次大小
       chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。
       inpaint: 启用局部重绘模式
+      preciseRef: 启用精准参考功能（仅支持 v4.5 模型），可以传6张图片。每张图片额外扣除5点数
+      preciseRefParams: 设置精准参考参数（用引号引用起来，下一张图片参数用分号隔开，格式：mode,strength,fidelity，例如：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）mode可选cs（角色+风格），s（仅风格），c（仅角色），strength（0-1），fidelity（0-1），默认cs,1,1
       smea: 启用 SMEA
       smeaDyn: 启用 DYN
       scheduler: 设置调度器
       decrisper: 启用动态阈值
       charRef: 启用角色参考功能（仅支持 v4.5 模型）
-      charRefStyle: 同时参考图片风格
+      charRefMode: 设置参考模式 (character, style, character&style，默认 character&style)
       charRefFidelity: 设置保真度 (0-1，默认1)
 
 
@@ -99,6 +101,7 @@ commands:
       charref-no-image: 未检测到图片，角色参考已取消。
       charref-error: 角色参考处理失败，请重试。
       charref-model-unsupported: 角色参考功能仅支持 v4.5 模型（nai4-5 或 nai4-5c），请切换模型后重试。
+      preciseref-wait-image: 请在60秒内发送精准参考图片。您可以发送"开始"结束收集，发送”取消“取消任务，最多6张。
   
   novelai.reset-queue:
     description: 重置用户队列状态

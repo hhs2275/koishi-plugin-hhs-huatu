@@ -40,7 +40,7 @@ commands:
       scheduler: Set Scheduler
       decrisper: Enable Dynamic Thresholding
       charRef: Enable Character Reference (v4.5 models only)
-      charRefStyle: Reference image style as well
+      charRefMode: Set reference mode (character, style, character&style, default character&style)
       charRefFidelity: Set fidelity (0-1, default 1)
 
 

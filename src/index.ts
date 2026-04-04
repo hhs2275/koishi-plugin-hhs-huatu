@@ -77,8 +77,7 @@ export const usage = `
 ### 🗓️ 开发计划
 - [ ] **点数控制系统**：精细化控制用户点数消耗（配置项完善中）。
 - [ ] **氛围传输功能**：实现novelai官网的氛围传输功能。
-- [ ] **角色参考功能**：实现novelai官网的角色参考功能。
-
+- [√] **角色参考功能**：实现novelai官网的角色参考功能。（已被精确参考替代）
 ---
 
 ### 📖 更多资源
@@ -451,7 +450,10 @@ export function apply(ctx: Context, config: Config) {
           strength: options.strength ?? 0.2,
         })
       } else {
-        options.resolution ||= resizeInput(getImageSize(image.buffer))
+        if (!options.resolution) {
+          const resolution = session.resolve(config.resolution)
+          options.resolution = typeof resolution === 'string' ? orientMap[resolution] : resolution
+        }
         Object.assign(parameters, {
           height: options.resolution.height,
           width: options.resolution.width,
@@ -665,27 +667,83 @@ export function apply(ctx: Context, config: Config) {
               }
             }
 
-            // 处理角色参考功能 (Character Reference Image)
+            // 处理精准参考功能 (Precise Reference)
             // 仅支持 v4.5 模型
-            if (options._charRefBase64 && modelSupportsCharacterReference(model)) {
-              const styleAware = options._charRefStyleAware ?? false
-              const fidelity = options._charRefFidelity ?? 1
+            if (options._preciseRefImages && Array.isArray(options._preciseRefImages) && modelSupportsCharacterReference(model)) {
+              for (const imgData of options._preciseRefImages) {
+                if (!imgData.base64 && imgData.url) {
+                  try {
+                    if (config.debugLog) ctx.logger.info('[PreciseRef] 检测到重画任务，正在重新下载并处理精准参考图片...')
+                    const refImage = await download(ctx, imgData.url)
+                    const processedRef = await processCharacterReferenceImage(refImage)
+                    imgData.base64 = processedRef.base64
+                    if (config.debugLog) ctx.logger.info('[PreciseRef] 重画图片数据重建完成')
+                  } catch (err) {
+                    ctx.logger.warn(`[PreciseRef] 重画时重新下载精确参考图片失败: ${err}`)
+                  }
+                }
+              }
 
-              // 设置 director_reference 相关参数
-              parameters.director_reference_images = [options._charRefBase64]
-              parameters.director_reference_descriptions = [{
-                caption: {
-                  base_caption: styleAware ? 'character&style' : 'character',
-                  char_captions: [],
-                },
-                legacy_uc: false,
-              }]
-              parameters.director_reference_information_extracted = [1]
-              parameters.director_reference_strength_values = [1]
-              parameters.director_reference_secondary_strength_values = [1 - fidelity]
+              // 过滤掉下载失败或没有base64的图片
+              const validImages = options._preciseRefImages.filter(img => img.base64)
 
-              if (config.debugLog) {
-                ctx.logger.info(`[CharRef] 已添加角色参考参数: styleAware=${styleAware}, fidelity=${fidelity}, secondaryStrength=${1 - fidelity}`)
+              if (validImages.length > 0) {
+                // 解析 parameters "-p cs,1,0.8;c,0.9,1"
+                // 兼容中英文标点符号以及多余的引号
+                const paramStr = (options._preciseRefParams || "cs,1,1")
+                  .replace(/“|”|"|'/g, '') // 去除由命令行传入时可能带有的双引号/单引号
+                  .replace(/；/g, ';')     // 替换中文分号
+                  .replace(/，/g, ',')     // 替换中文逗号
+                const paramGroups = paramStr.split(';').map(s => s.trim()).filter(Boolean)
+
+                const modes: string[] = []
+                const strengths: number[] = []
+                const fidelities: number[] = []
+
+                for (let i = 0; i < validImages.length; i++) {
+                  let p = "cs,1,1" // 默认值
+                  if (i < paramGroups.length) {
+                    p = paramGroups[i]
+                  }
+
+                  const parts = p.split(',').map(s => s.trim())
+                  const modeRaw = parts[0] || 'cs'
+                  const strengthRaw = parseFloat(parts[1])
+                  const fidelityRaw = parseFloat(parts[2])
+
+                  let mode = 'character&style'
+                  if (modeRaw === 'c' || modeRaw === 'character') mode = 'character'
+                  else if (modeRaw === 's' || modeRaw === 'style') mode = 'style'
+
+                  const strength = isNaN(strengthRaw) ? 1 : strengthRaw
+                  const fidelity = isNaN(fidelityRaw) ? 1 : fidelityRaw
+
+                  modes.push(mode)
+                  strengths.push(strength)
+                  fidelities.push(1 - fidelity) // 沿用 1 - 保真度
+                }
+
+                // 设置 director_reference 相关参数
+                parameters.director_reference_images = validImages.map(img => img.base64)
+                parameters.director_reference_descriptions = modes.map(mode => ({
+                  caption: {
+                    base_caption: mode,
+                    char_captions: [],
+                  },
+                  legacy_uc: false,
+                }))
+                parameters.director_reference_information_extracted = validImages.map(() => 1) // 默认信息提取1
+                parameters.director_reference_strength_values = strengths
+                parameters.director_reference_secondary_strength_values = fidelities
+
+                if (config.debugLog) {
+                  ctx.logger.info(`[PreciseRef] 已添加参数: modes=${modes}, strengths=${strengths}, fidelities=${fidelities}`)
+                }
+
+                // clear base64 from options to save memory
+                options._preciseRefImages.forEach(img => {
+                  delete img.base64
+                })
               }
             }
           }
@@ -744,6 +802,10 @@ export function apply(ctx: Context, config: Config) {
               if (config.debugLog) {
                 ctx.logger.info(`[Inpaint] 添加遮罩参数，mask大小: ${parameters.mask.length} 字节`)
               }
+
+              // 数据已复制到 parameters，主动释放 options 上的大体积 base64
+              delete options._maskBase64
+              delete options._originalBase64
             }
           }
 
@@ -1172,9 +1234,8 @@ export function apply(ctx: Context, config: Config) {
     .option('batch', '-b <batch:option>', { fallback: 1, hidden: () => config.maxIterations <= 1 })
     .option('chars', '-K <chars>')
     .option('inpaint', '-M', { hidden: thirdParty })
-    .option('charRef', '-I', { hidden: thirdParty })  // Character Reference Image
-    .option('charRefStyle', '--style')  // 同时参考风格
-    .option('charRefFidelity', '-F <fidelity:number>')  // 保真度 0-1
+    .option('preciseRef', '-P', { hidden: thirdParty })  // 精准参考
+    .option('preciseRefParams', '-p <params:string>')  // 精准参考参数
 
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
@@ -1224,14 +1285,14 @@ export function apply(ctx: Context, config: Config) {
       // ========== 局部重绘交互流程（在进入队列之前完成） ==========
       if (options.inpaint) {
         try {
-          // 1. 解析输入中的图片URL
+          // 1. 解析输入中的图片URL，并从 input 中移除图片元素只保留提示词
           let imgUrl: string
-          h.transform(h.parse(input), {
+          input = h('', h.transform(h.parse(input), {
             img(attrs) {
               imgUrl = attrs.src
               return ''
             },
-          })
+          })).toString(true)
 
           // 2. 如果没有图片，提示用户发送并等待
           if (!imgUrl) {
@@ -1320,67 +1381,81 @@ export function apply(ctx: Context, config: Config) {
       }
       // ========== 局部重绘交互流程结束 ==========
 
-      // ========== 角色参考交互流程（在进入队列之前完成） ==========
-      if (options.charRef) {
+      // ========== 精准参考交互流程（在进入队列之前完成） ==========
+      if (options.preciseRef) {
         try {
-          // 获取当前使用的模型
           const currentModel = modelMap[options.model] || modelMap[config.model] || 'nai-diffusion-4-5-full'
 
-          // 检查模型是否支持角色参考功能
           if (!modelSupportsCharacterReference(currentModel)) {
             return session.text('commands.novelai.messages.charref-model-unsupported')
           }
 
-          // 1. 解析输入中的图片URL
-          let refImgUrl: string
-          h.transform(h.parse(input), {
-            img(attrs) {
-              refImgUrl = attrs.src
-              return ''
-            },
-          })
+          let collectedImages: any[] = []
+          let failedCount = 0
+          const maxLimit = 6
 
-          // 2. 如果没有图片，提示用户发送
-          if (!refImgUrl) {
-            await session.send(session.text('commands.novelai.messages.charref-wait-image'))
+          await session.send(session.text('commands.novelai.messages.preciseref-wait-image') || '请输入精准参考图片。支持一次发送多张或分段发送，您可以发送"开始"结束收集，最多6张。')
+
+          while (collectedImages.length + failedCount < maxLimit) {
             const imageResponse = await session.prompt(60000)
 
             if (!imageResponse) {
-              return session.text('commands.novelai.messages.charref-timeout')
+              return session.text('commands.novelai.messages.charref-timeout') || '接收超时，精准参考已取消。'
             }
 
-            // 解析用户发送的图片
-            h.transform(h.parse(imageResponse), {
+            const parsedNodes = h.parse(imageResponse)
+            const contentText = parsedNodes.map(el => el.type === 'text' ? el.attrs.content : '').join('').trim()
+
+            if (contentText === '取消' || contentText.toLowerCase() === 'cancel') {
+              return '已取消精准参考任务。'
+            }
+
+            if (contentText === '开始' || contentText.toLowerCase() === 'start') {
+              if (collectedImages.length === 0) {
+                return session.text('commands.novelai.messages.charref-no-image')
+              }
+              break
+            }
+
+            let urls: string[] = []
+            h.transform(parsedNodes, {
               img(attrs) {
-                refImgUrl = attrs.src
+                urls.push(attrs.src)
                 return ''
               },
             })
 
-            if (!refImgUrl) {
-              return session.text('commands.novelai.messages.charref-no-image')
+            if (urls.length === 0) continue
+
+            for (const u of urls) {
+              if (collectedImages.length + failedCount >= maxLimit) break
+              try {
+                const refImage = await download(ctx, u)
+                const processedRef = await processCharacterReferenceImage(refImage)
+                collectedImages.push({
+                  base64: processedRef.base64,
+                  url: u,
+                  width: processedRef.width,
+                  height: processedRef.height
+                })
+                await session.send(`成功收集1张图片，已收集${collectedImages.length}张图片`)
+              } catch (err) {
+                ctx.logger.error(err)
+                failedCount++
+                await session.send(`1张图片收集失败，已收集${collectedImages.length}张图片`)
+              }
             }
           }
 
-          // 3. 从输入中移除图片元素，只保留提示词
-          input = h('', h.transform(h.parse(input), {
-            img() { return '' },
-          })).toString(true)
+          if (collectedImages.length === 0) {
+            return session.text('commands.novelai.messages.charref-no-image')
+          }
 
-          // 4. 下载并处理角色参考图片
-          await session.send(session.text('commands.novelai.messages.charref-processing'))
-          const refImage = await download(ctx, refImgUrl)
-          const processedRef = await processCharacterReferenceImage(refImage)
-
-            // 5. 保存处理后的数据到 options
-            ; (options as any)._charRefBase64 = processedRef.base64
-            ; (options as any)._charRefWidth = processedRef.width
-            ; (options as any)._charRefHeight = processedRef.height
-            ; (options as any)._charRefStyleAware = options.charRefStyle ?? false
-            ; (options as any)._charRefFidelity = options.charRefFidelity ?? 1
+          ; (options as any)._preciseRefImages = collectedImages
+            ; (options as any)._preciseRefParams = options.preciseRefParams
 
           if (config.debugLog) {
-            ctx.logger.info(`[CharRef] 角色参考图片处理完成，尺寸: ${processedRef.width}x${processedRef.height}，styleAware: ${options.charRefStyle}, fidelity: ${options.charRefFidelity ?? 1}`)
+            ctx.logger.info(`[PreciseRef] 交互完成，共收集 ${collectedImages.length} 张图片`)
           }
         } catch (err) {
           ctx.logger.error(err)
@@ -1390,7 +1465,7 @@ export function apply(ctx: Context, config: Config) {
           return session.text('commands.novelai.messages.charref-error')
         }
       }
-      // ========== 角色参考交互流程结束 ==========
+      // ========== 精准参考交互流程结束 ==========
 
       // 检查用户是否可以添加任务
       const canAddResult = queueSystem.canAddTask(userId)

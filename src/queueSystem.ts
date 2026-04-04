@@ -247,11 +247,13 @@ export class QueueSystem {
     const optionsToSave = JSON.parse(JSON.stringify(options))
 
     // 2. 删除占内存的 Base64 数据
-    // 因为我们已经存了 _originalUrl 和 _maskUrl，这些大字符串就不需要了
+    // 因为我们已经存了 _originalUrl / _maskUrl / _charRefUrl，这些大字符串就不需要了
     if (optionsToSave._originalBase64) delete optionsToSave._originalBase64
     if (optionsToSave._maskBase64) delete optionsToSave._maskBase64
     if (optionsToSave._alignedWidth) delete optionsToSave._alignedWidth
     if (optionsToSave._alignedHeight) delete optionsToSave._alignedHeight
+    // 清理角色参考的 base64 数据（一张 1536x1024 的 PNG 可达数 MB）
+    if (optionsToSave._charRefBase64) delete optionsToSave._charRefBase64
 
     // 3. 保存瘦身后的数据到内存
     this.userLastTask[userId] = { session, options: optionsToSave, input }

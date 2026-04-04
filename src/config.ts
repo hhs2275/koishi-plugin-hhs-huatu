@@ -495,7 +495,7 @@ export const Config = Schema.intersect([
           sampler: sampler.createSchema(sampler.nai3),
           smea: Schema.boolean().description('默认启用 SMEA。'),
           smeaDyn: Schema.boolean().description('默认启用 SMEA 采样器的 DYN 变体。'),
-          scheduler: Schema.union(scheduler.nai).description('默认的调度器。').default('native'),
+          scheduler: Schema.union(scheduler.nai).description('默认的调度器。').default('karras'),
         }),
         Schema.object({
           model: Schema.const('nai-v4-curated-preview'),
