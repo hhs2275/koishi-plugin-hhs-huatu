@@ -1,0 +1,2 @@
+1985:   ctx.command('novelai.member')
+2205:     ctx.command('novelai.member-debug', '会员系统调试指令', { authority: config.memberDebugCommandAuthLv })

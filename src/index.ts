@@ -1574,7 +1574,7 @@ export function apply(ctx: Context, config: Config) {
       }
 
       // 保存用户最后一次任务
-      queueSystem.saveLastTask(userId, session, options, input)
+      queueSystem.saveLastTask(userId, session, options, input, pointsCost)
 
       // 添加任务到队列并处理
       return queueSystem.addTask({
@@ -1734,6 +1734,19 @@ export function apply(ctx: Context, config: Config) {
           return session.text('commands.novelai.messages.exceed-user-queue', [config.maxUserQueueSize])
         }
 
+        // ===== 重画点数预扣 =====
+        let redrawDeductedPoints = 0
+        if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
+          const totalPointsCost = lastTask.pointsCost * repeatCount
+          const result = await membershipSystem.deductPoints(userId, totalPointsCost)
+          if (result === -1) {
+            const currentPoints = membershipSystem.getPoints(userId)
+            queueSystem.releaseRedrawLock()
+            return session.text('commands.novelai.messages.points-insufficient', [currentPoints, totalPointsCost])
+          }
+          redrawDeductedPoints = totalPointsCost
+        }
+
         // 先增加用户任务计数
         queueSystem.incrementUserTask(userId, repeatCount)
 
@@ -1748,7 +1761,13 @@ export function apply(ctx: Context, config: Config) {
             totalWithRedraw,
             userQueue
           ])
-          await session.send(queueMsg)
+
+          // 构建点数信息
+          const pointsInfo = (redrawDeductedPoints > 0)
+            ? session.text('commands.novelai.messages.points-deducted', [redrawDeductedPoints])
+            : ''
+
+          await session.send(queueMsg + pointsInfo)
 
           // 在发送队列信息后立即更新lastDrawTime
           if (config.membershipEnabled) {
@@ -1930,6 +1949,11 @@ export function apply(ctx: Context, config: Config) {
               },
               reject: (err) => {
                 queueSystem.userTasks[currentUserId]--
+                // 单次重画任务失败，退还该次对应的点数
+                if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
+                  membershipSystem.refundPoints(currentUserId, lastTask.pointsCost)
+                    .catch(refundErr => ctx.logger.error(`[重画] 退还点数异常: ${refundErr.message}`))
+                }
                 targetBot.sendMessage(
                   targetChannelId,
                   handleError(ctx, session, err)
@@ -2110,6 +2134,13 @@ export function apply(ctx: Context, config: Config) {
             // 如果用户不是会员或会员已过期，则从当前时间开始计算
             userData[targetId].isMember = true
             userData[targetId].membershipExpiry = Date.now() + options.days * 24 * 60 * 60 * 1000
+
+            // 从非会员变成会员时，刷新点数（周期性模式下）
+            if (config.pointsEnabled && config.pointsMode === 'periodic') {
+              const refreshAmount = config.pointsRefreshAmount || 200
+              userData[targetId].points = refreshAmount
+              ctx.logger.info(`[会员系统] 用户 ${targetId} 成为会员，点数已刷新为 ${refreshAmount}`)
+            }
           }
           userData[targetId].dailyLimit = config.memberDailyLimit || 0
         }

@@ -24,7 +24,8 @@ export class QueueSystem {
   public userLastTask: Dict<{
     session: Session<'authority'>,
     options: any,
-    input: string
+    input: string,
+    pointsCost?: number
   }> = Object.create(null)
 
   // 重画相关
@@ -242,7 +243,7 @@ export class QueueSystem {
   }
 
   // 保存用户最后一次任务
-  saveLastTask(userId: string, session: Session<'authority'>, options: any, input: string): void {
+  saveLastTask(userId: string, session: Session<'authority'>, options: any, input: string, pointsCost?: number): void {
     // 1. 深拷贝 options
     const optionsToSave = JSON.parse(JSON.stringify(options))
 
@@ -254,13 +255,15 @@ export class QueueSystem {
     if (optionsToSave._alignedHeight) delete optionsToSave._alignedHeight
     // 清理角色参考的 base64 数据（一张 1536x1024 的 PNG 可达数 MB）
     if (optionsToSave._charRefBase64) delete optionsToSave._charRefBase64
+    // 清理旧的扣费记录，重画时由外部统一管理扣费
+    if (optionsToSave._deductedPoints) delete optionsToSave._deductedPoints
 
     // 3. 保存瘦身后的数据到内存
-    this.userLastTask[userId] = { session, options: optionsToSave, input }
+    this.userLastTask[userId] = { session, options: optionsToSave, input, pointsCost: pointsCost || 0 }
   }
 
   // 获取用户最后一次任务
-  getLastTask(userId: string): { session: Session<'authority'>, options: any, input: string } | undefined {
+  getLastTask(userId: string): { session: Session<'authority'>, options: any, input: string, pointsCost?: number } | undefined {
     return this.userLastTask[userId]
   }
 
