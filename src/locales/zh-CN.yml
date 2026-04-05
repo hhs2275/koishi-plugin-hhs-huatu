@@ -101,7 +101,10 @@ commands:
       charref-no-image: 未检测到图片，角色参考已取消。
       charref-error: 角色参考处理失败，请重试。
       charref-model-unsupported: 角色参考功能仅支持 v4.5 模型（nai4-5 或 nai4-5c），请切换模型后重试。
-      preciseref-wait-image: 请在60秒内发送精准参考图片。您可以发送"开始"结束收集，发送”取消“取消任务，最多6张。
+      preciseref-wait-image: 请在60秒内发送精准参考图片。您可以发送"开始"结束收集，发送"取消"取消任务，最多6张。
+      points-insufficient: 您的点数不足（当前 {0} 点，需要 {1} 点），无法执行此任务。
+      points-deducted: ，预扣除 {0} 点
+      points-refunded: ，已返还 {0} 点
   
   novelai.reset-queue:
     description: 重置用户队列状态
@@ -186,3 +189,6 @@ commands:
       request-timeout: 请求超时。
       request-failed: 请求失败 ({0})，请稍后重试。
       empty-response: 服务器返回了空白图片，请稍后重试。
+      points-insufficient: 您的点数不足（当前 {0} 点，需要 {1} 点），无法执行此任务。
+      points-deducted: ，预扣除 {0} 点
+      points-refunded: ，已返还 {0} 点

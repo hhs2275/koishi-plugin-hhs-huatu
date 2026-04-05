@@ -296,6 +296,13 @@ export interface Config extends PromptConfig, ParamConfig {
   memberReminderGroups?: string[]
   memberDebugCommandEnabled?: boolean
   memberDebugCommandAuthLv?: number
+  // 点数控制配置
+  pointsEnabled?: boolean
+  pointsMode?: 'periodic' | 'permanent'
+  pointsDefault?: number
+  pointsRefreshCycleDays?: number
+  pointsRefreshAmount?: number
+  pointsRefreshIncludeNonMember?: boolean
   // 图片审核配置
   imageReviewEnabled?: boolean
   imageReviewFailAction?: 'block' | 'ignore'
@@ -577,6 +584,19 @@ export const Config = Schema.intersect([
     memberDebugCommandEnabled: Schema.boolean().description('是否启用会员系统调试指令（允许手动触发清理和提醒）').default(false),
     memberDebugCommandAuthLv: Schema.number().description('使用调试指令所需的权限等级').default(4),
   }).description('会员系统设置'),
+
+  // 点数控制配置
+  Schema.object({
+    pointsEnabled: Schema.boolean().description('是否启用点数控制（需先启用会员系统）').default(false),
+    pointsMode: Schema.union([
+      Schema.const('periodic').description('按周期刷新'),
+      Schema.const('permanent').description('永久点数'),
+    ]).description('点数模式').default('periodic'),
+    pointsDefault: Schema.number().description('会员默认初始点数').default(200),
+    pointsRefreshCycleDays: Schema.number().description('刷新周期（天数），默认每30天刷新一次').default(30).min(1).max(365),
+    pointsRefreshAmount: Schema.number().description('每次刷新恢复的点数').default(200),
+    pointsRefreshIncludeNonMember: Schema.boolean().description('刷新范围是否包括非会员').default(false),
+  }).description('点数控制设置'),
 
   Schema.object({
     imageReviewEnabled: Schema.boolean().description('是否启用图片审核').default(false),

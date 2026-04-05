@@ -94,6 +94,27 @@ export interface UserData {
   lastUsed: number // 时间戳，上次使用时间
   dailyLimit: number // 每日使用上限
   lastDrawTime?: number // 时间戳，上次绘图时间，用于计算CD
+  points?: number // 当前点数
+}
+
+// 数据库表结构
+export interface HhsHuatuUser {
+  id: number
+  visitorId: string       // 用户唯一标识 (userId)
+  isMember: boolean
+  membershipExpiry: number
+  dailyUsage: number
+  lastUsed: number
+  dailyLimit: number
+  lastDrawTime: number
+  points: number
+}
+
+// 声明 Koishi 数据库表
+declare module 'koishi' {
+  interface Tables {
+    hhs_huatu_user: HhsHuatuUser
+  }
 }
 
 export namespace StableDiffusionWebUI {

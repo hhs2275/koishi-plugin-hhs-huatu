@@ -51,6 +51,7 @@ export const usage = `
 [![](https://img.shields.io/badge/QQ群-112879548-blue)](https://qm.qq.com/q/4nKKvckKbu) [![](https://img.shields.io/badge/GitHub-仓库地址-black)](https://github.com/hhs2275/koishi-plugin-hhs-huatu)
 
 ### ✨ 核心亮点
+新版本改用数据库。你的会员数据在 你的 Koishi 根目录/data/hhs-huatu-user-data.json。把它放在hhs-huatu-import文件夹下面，然后发“会员调试--import”指令，就可以把数据导入数据库。
 
 本插件针对 **NovelAI V4 & V4.5** 模型进行了深度适配，预设快捷指令，助你快速切换模型：
 
@@ -75,8 +76,8 @@ export const usage = `
 * **智能审核**：集成腾讯 AI 或 API4AI，自动过滤违规内容。
 
 ### 🗓️ 开发计划
-- [ ] **点数控制系统**：精细化控制用户点数消耗（配置项完善中）。
-- [ ] **氛围传输功能**：实现novelai官网的氛围传输功能。
+- [√] **点数控制系统**：精细化控制用户点数消耗进行本地计算，可能存在误差，请以实际扣费为准。
+- [x] ~~**氛围传输功能**：实现novelai官网的氛围传输功能。v4版本的风味传输api不允许直接发图，需要先去官网生成对应文件，我做不到。~~
 - [√] **角色参考功能**：实现novelai官网的角色参考功能。（已被精确参考替代）
 ---
 
@@ -109,7 +110,7 @@ function handleError({ logger }: Context, session: Session, err: Error) {
 }
 
 export const inject = {
-  required: ['http'],
+  required: ['http', 'database'],
   optional: ['translator'],
 }
 
@@ -1055,6 +1056,14 @@ export function apply(ctx: Context, config: Config) {
               continue
             }
           }
+          // 生成失败，退还点数
+          const deductedPoints = (options as any)?._deductedPoints || 0
+          if (deductedPoints > 0 && config.pointsEnabled) {
+            await membershipSystem.refundPoints(session.userId, deductedPoints)
+              ; (options as any)._deductedPoints = 0 // 避免重复退还
+            const refundMsg = session.text('commands.novelai.messages.points-refunded', [deductedPoints])
+            return await session.send(handleError(ctx, session, err) + refundMsg)
+          }
           return await session.send(handleError(ctx, session, err))
         }
       }
@@ -1183,6 +1192,12 @@ export function apply(ctx: Context, config: Config) {
         parameters.seed++
       } catch (err) {
         container.forEach(cleanUp)
+        // 生成过程中出错，退还点数
+        const deductedPoints = (options as any)?._deductedPoints || 0
+        if (deductedPoints > 0 && config.pointsEnabled) {
+          await membershipSystem.refundPoints(session.userId, deductedPoints)
+            ; (options as any)._deductedPoints = 0
+        }
         throw err
       }
     }
@@ -1474,6 +1489,61 @@ export function apply(ctx: Context, config: Config) {
         return session.text(`commands.novelai.messages.${msgKey}`, params.map(p => parseInt(p) || p))
       }
 
+      // ========== 点数计算与预扣 ==========
+      let pointsCost = 0
+      if (config.pointsEnabled && config.membershipEnabled) {
+        // 确定分辨率
+        let resWidth = 832, resHeight = 1216
+        if (options.resolution) {
+          resWidth = options.resolution.width || 832
+          resHeight = options.resolution.height || 1216
+        } else {
+          const res = session.resolve(config.resolution)
+          if (typeof res === 'string' && orientMap[res]) {
+            resWidth = orientMap[res].width
+            resHeight = orientMap[res].height
+          } else if (res && typeof res === 'object') {
+            resWidth = (res as any).width || 832
+            resHeight = (res as any).height || 1216
+          }
+        }
+
+        // 确定步数
+        const imgUrl_check = h.select(h.parse(input || ''), 'img').length > 0 || options.inpaint
+        const steps = options.steps ?? session.resolve(imgUrl_check ? config.imageSteps : config.textSteps) ?? 23
+
+        // 确定精准参考图片数量
+        const preciseRefCount = (options as any)?._preciseRefImages?.length || 0
+
+        // 计算点数消耗
+        const { batch = 1, iterations = 1 } = options
+        const total = batch * iterations
+
+        const resolvedSmeaDyn = options.smeaDyn ?? config.smeaDyn ?? false;
+        const resolvedSmea = (options.smea ?? config.smea) || resolvedSmeaDyn;
+
+        pointsCost = membershipSystem.calculatePointsCost({
+          width: resWidth,
+          height: resHeight,
+          steps,
+          smea: resolvedSmea,
+          smeaDyn: resolvedSmeaDyn,
+          strength: options.strength,
+          isImg2Img: !!options.inpaint || imgUrl_check,
+          preciseRefCount,
+        }) * total // 乘以总生成数
+
+        if (pointsCost > 0) {
+          const result = await membershipSystem.deductPoints(userId, pointsCost)
+          if (result === -1) {
+            const currentPoints = membershipSystem.getPoints(userId)
+            return session.text('commands.novelai.messages.points-insufficient', [currentPoints, pointsCost])
+          }
+          // 存储已扣除的点数到 options，以便失败时退还
+          ; (options as any)._deductedPoints = pointsCost
+        }
+      }
+
       // 先增加用户任务计数，再显示队列信息
       queueSystem.incrementUserTask(userId, 1)
 
@@ -1484,10 +1554,17 @@ export function apply(ctx: Context, config: Config) {
       if ((totalWithCurrent > 0 || userQueue > 0) && config.showQueueInfo) {
         // 添加调试日志
         ctx.logger.debug(`队列信息 - 总队列: ${totalWithCurrent}, 用户队列: ${userQueue}`)
-        const queueMsg = await session.text('commands.novelai.messages.queue-position', [
+
+        // 构建点数信息
+        const pointsInfo = (pointsCost > 0)
+          ? session.text('commands.novelai.messages.points-deducted', [pointsCost])
+          : ''
+
+        const queueMsg = session.text('commands.novelai.messages.queue-position', [
           totalWithCurrent,
           userQueue
-        ])
+        ]) + pointsInfo
+
         await session.send(queueMsg)
 
         // 在发送队列信息后立即更新lastDrawTime，而不是等到图片生成完成
@@ -2022,7 +2099,8 @@ export function apply(ctx: Context, config: Config) {
             membershipExpiry: Date.now() + options.days * 24 * 60 * 60 * 1000,
             dailyUsage: 0,
             lastUsed: Date.now(),
-            dailyLimit: config.memberDailyLimit || 0
+            dailyLimit: config.memberDailyLimit || 0,
+            points: config.pointsEnabled ? (config.pointsDefault || 200) : 0,
           }
         } else {
           // 如果用户已经是会员且会员未过期，则在原有期限上增加天数
@@ -2088,7 +2166,13 @@ export function apply(ctx: Context, config: Config) {
           }
         }
 
-        return `${usageInfo}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）`
+        let pointsInfo = ''
+        if (config.pointsEnabled) {
+          const points = user.points || 0
+          pointsInfo = `\n点数余额：${points}`
+        }
+
+        return `${usageInfo}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
       } else {
         const remaining = config.nonMemberDailyLimit - user.dailyUsage
         if (isQueryingSelf) {
@@ -2098,7 +2182,7 @@ export function apply(ctx: Context, config: Config) {
             remaining
           ])
         } else {
-          return `用户 ${targetId} 是非会员\n每日限额：${config.nonMemberDailyLimit} 次\n已使用：${user.dailyUsage} 次\n剩余：${remaining} 次`
+          return `用户 ${targetId} 是非会员\n每日限额：${config.nonMemberDailyLimit} 次\n已使用：${user.dailyUsage} 次\n剩余：${remaining} 次${config.pointsEnabled ? '\n点数余额：' + (user.points || 0) : ''}`
         }
       }
     })
@@ -2125,6 +2209,11 @@ export function apply(ctx: Context, config: Config) {
       .option('status', '-s 查看定时任务状态')
       .option('resetUsage', '-u <userId:string> 重置指定用户的使用次数')
       .option('addDaysAll', '-a <days:number> 给所有会员增加天数')
+      .option('refreshPoints', '-f 立即执行点数刷新')
+      .option('addPoints', '--add-points <amount:number> 给所有会员加点数')
+      .option('subPoints', '--sub-points <amount:number> 给所有会员减点数')
+      .option('setPoints', '--set-points <value:string> 设置指定用户点数，格式: 用户ID:点数')
+      .option('importData', '--import 从 JSON 文件导入数据')
       .action(async ({ session, options }) => {
         // 如果会员系统未启用
         if (!config.membershipEnabled) {
@@ -2231,6 +2320,28 @@ export function apply(ctx: Context, config: Config) {
           statusMsg += `过期会员：${expiredMembers}\n`
           statusMsg += `非会员：${nonMembers}\n`
 
+          // 点数系统状态
+          if (config.pointsEnabled) {
+            statusMsg += `\n【点数系统】\n`
+            statusMsg += `✅ 点数控制：已启用\n`
+            statusMsg += `   点数模式：${config.pointsMode === 'periodic' ? '按周期刷新' : '永久点数'}\n`
+            if (config.pointsMode === 'periodic') {
+              statusMsg += `   刷新周期：${config.pointsRefreshCycleDays || 30} 天\n`
+              statusMsg += `   刷新点数：${config.pointsRefreshAmount || 200}\n`
+              statusMsg += `   刷新范围：${config.pointsRefreshIncludeNonMember ? '所有用户' : '仅会员'}\n`
+            }
+            statusMsg += `   默认点数：${config.pointsDefault || 200}\n`
+
+            // 统计总点数
+            let totalPoints = 0
+            for (const uid in userData) {
+              totalPoints += (userData[uid].points || 0)
+            }
+            statusMsg += `   全体点数总和：${totalPoints}\n`
+          } else {
+            statusMsg += `\n❌ 点数控制：未启用\n`
+          }
+
           return statusMsg
         }
 
@@ -2252,8 +2363,74 @@ export function apply(ctx: Context, config: Config) {
           return '✅ 提醒完成！请查看控制台日志获取详细信息。'
         }
 
+        // ========== 点数管理指令 ==========
+
+        // 立即执行点数刷新
+        if (options.refreshPoints) {
+          if (!config.pointsEnabled) {
+            return '❌ 点数控制未启用'
+          }
+          if (config.pointsMode !== 'periodic') {
+            return '❌ 当前点数模式为永久模式，无需刷新'
+          }
+          await session.send('正在执行点数刷新...')
+          const result = await membershipSystem.refreshPoints()
+          return result.message
+        }
+
+        // 给所有会员加点数
+        if (options.addPoints !== undefined) {
+          if (!config.pointsEnabled) {
+            return '❌ 点数控制未启用'
+          }
+          const amount = Math.abs(options.addPoints)
+          await session.send(`正在为所有会员增加 ${amount} 点数...`)
+          const result = await membershipSystem.addPointsToAll(amount, true)
+          return result.message
+        }
+
+        // 给所有会员减点数
+        if (options.subPoints !== undefined) {
+          if (!config.pointsEnabled) {
+            return '❌ 点数控制未启用'
+          }
+          const amount = -Math.abs(options.subPoints)
+          await session.send(`正在为所有会员扣除 ${Math.abs(amount)} 点数...`)
+          const result = await membershipSystem.addPointsToAll(amount, true)
+          return result.message
+        }
+
+        // 设置指定用户点数
+        if (options.setPoints) {
+          if (!config.pointsEnabled) {
+            return '❌ 点数控制未启用'
+          }
+          const parts = options.setPoints.split(':')
+          if (parts.length !== 2) {
+            return '❌ 格式错误，请使用格式: 用户ID:点数\n例如: --set-points 123456:500'
+          }
+          const [targetId, pointsStr] = parts
+          const points = parseInt(pointsStr)
+          if (isNaN(points) || points < 0) {
+            return '❌ 点数必须为非负整数'
+          }
+          if (!userData[targetId]) {
+            return `❌ 用户 ${targetId} 不存在`
+          }
+          userData[targetId].points = points
+          await membershipSystem.saveUserData()
+          return `✅ 已设置用户 ${targetId} 的点数为 ${points}`
+        }
+
+        // 从 JSON 文件导入数据
+        if (options.importData) {
+          await session.send('正在从 JSON 文件导入数据...')
+          const result = await membershipSystem.importFromJson()
+          return result.message
+        }
+
         // 如果没有指定任何选项，显示帮助
-        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态\n-u 重置指定用户的使用次数\n-a <天数> 给所有会员增加天数'
+        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态\n-u 重置指定用户的使用次数\n-a <天数> 给所有会员增加天数\n-f 立即刷新点数\n--add-points <点数> 给所有会员加点\n--sub-points <点数> 给所有会员减点\n--set-points <用户ID:点数> 设置指定用户点数\n--import 从 JSON 导入数据'
       })
   }
 
@@ -2627,7 +2804,38 @@ NovelAI Director Tools 图像处理工具
           return session.text(`commands.novelai.messages.${msgKey}`, params.map(p => parseInt(p) || p))
         }
 
-        // 增加用户任务计数
+        // ===== 提前下载图片与计费检查 =====
+        let imageData: ImageData
+        try {
+          if (config.debugLog) {
+            ctx.logger.info(`[Director Tools] 提前下载图片以进行扣费预检`)
+          }
+          imageData = await download(ctx, imgUrl)
+        } catch (err) {
+          ctx.logger.error(`[Director Tools] 图片下载失败: ${err.message}`, err)
+          if (err instanceof NetworkError) {
+            return session.text(err.message, err.params)
+          }
+          return session.text('commands.novelai.messages.download-error')
+        }
+
+        let deductedPoints = 0
+        if (config.membershipEnabled && config.pointsEnabled) {
+          const size = getImageSize(imageData.buffer)
+          const pointsCost = membershipSystem.calculateDirectorPointsCost(size.width, size.height, toolType)
+
+          if (pointsCost > 0) {
+            const result = await membershipSystem.deductPoints(userId, pointsCost)
+            if (result === -1) {
+              const currentPoints = membershipSystem.getPoints(userId)
+              // 直接回复错误并结束，不会进入排队
+              return session.text('commands.novelai.messages.points-insufficient', [currentPoints, pointsCost])
+            }
+            deductedPoints = pointsCost // 记录已扣点数用于可能的退款
+          }
+        }
+
+        // 增加用户任务计数（真正开始排队）
         queueSystem.incrementUserTask(userId, 1)
 
         // 显示队列信息
@@ -2657,25 +2865,6 @@ NovelAI Director Tools 图像处理工具
               _forcedTokenIndex: borrowedIdx,
             }
           try {
-            // 步骤 1: 下载图片
-            if (config.debugLog) {
-              ctx.logger.info(`[Director Tools Task] 开始下载图片`)
-            }
-
-            let imageData: ImageData
-            try {
-              imageData = await download(ctx, imgUrl)
-              if (config.debugLog) {
-                ctx.logger.info(`[Director Tools Task] 图片下载完成，大小: ${imageData.buffer.byteLength} bytes`)
-              }
-            } catch (err) {
-              ctx.logger.error(`[Director Tools Task] 图片下载失败: ${err.message}`, err)
-              if (err instanceof NetworkError) {
-                throw err
-              }
-              throw new NetworkError('commands.novelai.messages.download-error')
-            }
-
             // 步骤 2: 获取 Token
             if (config.debugLog) {
               ctx.logger.info('[Director Tools Task] 开始获取 token')
@@ -2920,6 +3109,12 @@ NovelAI Director Tools 图像处理工具
             } catch (err) {
               // 任务失败，减少用户计数
               queueSystem.userTasks[userId]--
+
+              // 因为报错导致没画成，执行一次全部退款
+              if (config.membershipEnabled && config.pointsEnabled && deductedPoints > 0) {
+                membershipSystem.refundPoints(userId, deductedPoints)
+                  .catch(refundErr => ctx.logger.error(`[Director Tools] 失败返还点数异常: ${refundErr.message}`))
+              }
 
               ctx.logger.error(`[Director Tools] 任务执行失败: ${err.message}`, err)
 
