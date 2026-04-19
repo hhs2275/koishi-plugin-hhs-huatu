@@ -50,8 +50,117 @@ const MAX_OUTPUT_SIZE = 1048576
 const MAX_CONTENT_SIZE = 10485760
 const ALLOWED_TYPES = ['image/jpeg', 'image/png']
 
+// ========== 图片内存缓存（TTL 5分钟，访问刷新，LRU 淘汰，内存上限 200MB） ==========
+
+interface CachedImage {
+  data: ImageData
+  timer: ReturnType<typeof setTimeout>
+  byteSize: number  // 该条目占用的内存大小（字节）
+}
+
+/**
+ * 图片内存缓存，以 URL 为 key 缓存已下载的 ImageData。
+ * - 默认 TTL 为 5 分钟（300000ms），每次读取时自动刷新
+ * - 最大内存上限默认 200MB，超过时自动淘汰最久未使用的条目（LRU）
+ * - TTL 到期后自动从内存中移除
+ * - 利用 Map 的插入顺序特性实现 LRU：访问时删除并重新插入到末尾
+ */
+class ImageCache {
+  private cache = new Map<string, CachedImage>()
+  private ttl: number
+  private maxBytes: number
+  private currentBytes = 0
+
+  /**
+   * @param ttlMs   缓存过期时间（毫秒），默认 5 分钟
+   * @param maxMB   最大缓存内存（MB），默认 200MB
+   */
+  constructor(ttlMs = 5 * 60 * 1000, maxMB = 200) {
+    this.ttl = ttlMs
+    this.maxBytes = maxMB * 1024 * 1024
+  }
+
+  /** 从缓存中获取图片，命中时刷新 TTL 并更新 LRU 顺序 */
+  get(url: string): ImageData | undefined {
+    const entry = this.cache.get(url)
+    if (!entry) return undefined
+
+    // 刷新 TTL
+    clearTimeout(entry.timer)
+    entry.timer = setTimeout(() => this._evict(url), this.ttl)
+
+    // 更新 LRU 顺序：删除后重新插入，使其移到 Map 末尾（最新）
+    this.cache.delete(url)
+    this.cache.set(url, entry)
+
+    return entry.data
+  }
+
+  /** 将图片存入缓存，超过内存上限时淘汰最久未使用的条目 */
+  set(url: string, data: ImageData): void {
+    // 计算该条目的内存大小（以 buffer 的字节长度为准）
+    const byteSize = data.buffer.byteLength
+
+    // 如果已有旧条目，先移除
+    const existing = this.cache.get(url)
+    if (existing) {
+      clearTimeout(existing.timer)
+      this.currentBytes -= existing.byteSize
+      this.cache.delete(url)
+    }
+
+    // 淘汰最久未使用的条目，直到有足够空间
+    while (this.currentBytes + byteSize > this.maxBytes && this.cache.size > 0) {
+      // Map 迭代顺序 = 插入顺序，第一个即为最久未使用的
+      const oldestKey = this.cache.keys().next().value
+      this._evict(oldestKey)
+    }
+
+    const timer = setTimeout(() => this._evict(url), this.ttl)
+    this.cache.set(url, { data, timer, byteSize })
+    this.currentBytes += byteSize
+  }
+
+  /** 内部方法：移除指定条目并释放内存计数 */
+  private _evict(url: string): void {
+    const entry = this.cache.get(url)
+    if (!entry) return
+    clearTimeout(entry.timer)
+    this.currentBytes -= entry.byteSize
+    this.cache.delete(url)
+  }
+
+  /** 清除所有缓存条目 */
+  clear(): void {
+    for (const entry of this.cache.values()) {
+      clearTimeout(entry.timer)
+    }
+    this.cache.clear()
+    this.currentBytes = 0
+  }
+
+  /** 当前缓存条目数 */
+  get size(): number {
+    return this.cache.size
+  }
+
+  /** 当前缓存占用内存（字节） */
+  get memoryUsage(): number {
+    return this.currentBytes
+  }
+
+  /** 当前缓存占用内存（MB，保留两位小数） */
+  get memoryUsageMB(): number {
+    return Math.round(this.currentBytes / 1024 / 1024 * 100) / 100
+  }
+}
+
+/** 全局图片缓存实例（TTL 5分钟，上限 200MB） */
+export const imageCache = new ImageCache()
+
 export async function download(ctx: Context, url: string, headers = {}): Promise<ImageData> {
   if (url.startsWith('data:') || url.startsWith('file:')) {
+    // data: 和 file: 协议的本地资源不走缓存
     const { mime, data } = await ctx.http.file(url)
     if (!ALLOWED_TYPES.includes(mime)) {
       throw new NetworkError('.unsupported-file-type')
@@ -59,6 +168,15 @@ export async function download(ctx: Context, url: string, headers = {}): Promise
     const base64 = arrayBufferToBase64(data)
     return { buffer: data, base64, dataUrl: `data:${mime};base64,${base64}` }
   } else {
+    // HTTP(S) URL：优先从缓存读取
+    const cached = imageCache.get(url)
+    if (cached) {
+      if (ctx.config?.debugLog) {
+        (ctx.logger || console).info?.(`[ImageCache] 缓存命中: ${url.substring(0, 80)}... (缓存: ${imageCache.size}条, ${imageCache.memoryUsageMB}MB)`)
+      }
+      return cached
+    }
+
     const image = await ctx.http(url, { responseType: 'arraybuffer', headers })
     if (+image.headers.get('content-length') > MAX_CONTENT_SIZE) {
       throw new NetworkError('.file-too-large')
@@ -69,7 +187,15 @@ export async function download(ctx: Context, url: string, headers = {}): Promise
     }
     const buffer = image.data
     const base64 = arrayBufferToBase64(buffer)
-    return { buffer, base64, dataUrl: `data:${mimetype};base64,${base64}` }
+    const result: ImageData = { buffer, base64, dataUrl: `data:${mimetype};base64,${base64}` }
+
+    // 存入缓存
+    imageCache.set(url, result)
+    if (ctx.config?.debugLog) {
+      (ctx.logger || console).info?.(`[ImageCache] 已缓存: ${url.substring(0, 80)}... (缓存: ${imageCache.size}条, ${imageCache.memoryUsageMB}MB/${200}MB)`)
+    }
+
+    return result
   }
 }
 
