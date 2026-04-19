@@ -39,6 +39,11 @@ commands:
       smeaDyn: DYN aktivieren
       scheduler: Scheduler festlegen
       decrisper: Dynamischer Schwellenwert aktivieren
+      charRef: Charakter-Referenz aktivieren (nur v4.5 Modelle)
+      charRefMode: Referenzmodus festlegen (character, style, character&style, Standard character&style)
+      charRefFidelity: Wiedergabetreue festlegen (0-1, Standard 1)
+      preciseRef: "Präzise Referenz aktivieren (nur v4.5 Modelle), ermöglicht bis zu 6 Bilder. Zieht 5 zusätzliche Punkte pro Bild ab."
+      preciseRefParams: "Parameter für präzise Referenz festlegen (in Anführungszeichen setzen, Parameter für nächstes Bild mit Semikolon trennen, Format: mode,strength,fidelity, z. B.: nai-4.5 -P -p \"cs,1,1;cs,0.5,0.5\") mode kann cs (Charakter+Stil), s (nur Stil), c (nur Charakter) sein, strength (0-1), fidelity (0-1), Standard cs,1,1"
 
 
     messages:
@@ -89,6 +94,16 @@ commands:
       inpaint-no-mask: Kein Bild erkannt, Inpainting wurde abgebrochen.
       inpaint-error: Inpainting-Verarbeitung fehlgeschlagen, bitte erneut versuchen.
       inpaint-url-expired: Bildlink ist abgelaufen.
+      charref-wait-image: Bitte senden Sie innerhalb von 60 Sekunden ein Charakter-Referenzbild.
+      charref-processing: Charakter-Referenzbild wird verarbeitet...
+      charref-timeout: Timeout, Charakter-Referenz wurde abgebrochen.
+      charref-no-image: Kein Bild erkannt, Charakter-Referenz wurde abgebrochen.
+      charref-error: Verarbeitung der Charakter-Referenz fehlgeschlagen, bitte erneut versuchen.
+      charref-model-unsupported: Charakter-Referenz wird nur von v4.5 Modellen (nai4-5 oder nai4-5c) unterstützt. Bitte wechseln Sie das Modell und versuchen Sie es erneut.
+      preciseref-wait-image: "Bitte senden Sie präzise Referenzbilder innerhalb von 60 Sekunden. Sie können \"Start\" senden, um die Sammlung zu beenden, oder \"Abbrechen\", um die Aufgabe abzubrechen (max. 6 Bilder)."
+      points-insufficient: "Unzureichende Punkte (aktuell: {0}, erforderlich: {1}), diese Aufgabe kann nicht ausgeführt werden."
+      points-deducted: ", {0} Punkte vorab abgezogen"
+      points-refunded: ", {0} Punkte erstattet"
   
   novelai.reset-queue:
     description: Benutzerwarteschlangenstatus zurücksetzen
@@ -145,6 +160,15 @@ commands:
       mitglied -l (Mitgliederliste anzeigen)
       mitglied -l -p 2 (Mitgliederliste anzeigen, Seite 2)
       mitglied -l -s 20 (Mitgliederliste anzeigen, 20 pro Seite, nach Mitgliedschaftsstufe sortiert)
+    options:
+      user: Ziel-Benutzer-ID
+      days: Anzahl der hinzuzufügenden oder festzulegenden Mitgliedschaftstage
+      addPoints: Anzahl der hinzuzufügenden oder abzuziehenden Punkte (unterstützt negative Werte)
+      refreshPoints: Punkte des Benutzers aktualisieren
+      cancel: Mitgliedschaft kündigen
+      list: Alle aktiven gültigen Mitglieder auflisten
+      page: Geben Sie die Seitenzahl der Mitgliederliste an
+      size: Geben Sie die Anzahl der Elemente pro Seite in der Mitgliederliste an
     messages:
       queue-position: "Gesamtwarteschlange: {0} Aufgaben | Ihre Warteschlange: {1} Aufgaben"
       queue-full: Maximale Warteschlangenkapazität erreicht ({0}), bitte später erneut versuchen
@@ -173,3 +197,6 @@ commands:
       request-timeout: Anfrage-Timeout.
       request-failed: Anfrage fehlgeschlagen ({0}), bitte später erneut versuchen.
       empty-response: Server hat ein leeres Bild zurückgegeben, bitte später erneut versuchen.
+      points-insufficient: "Unzureichende Punkte (aktuell: {0}, erforderlich: {1}), diese Aufgabe kann nicht ausgeführt werden."
+      points-deducted: ", {0} Punkte vorab abgezogen"
+      points-refunded: ", {0} Punkte erstattet"

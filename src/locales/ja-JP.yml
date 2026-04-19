@@ -39,6 +39,11 @@ commands:
       smeaDyn: DYNを有効
       scheduler: スケジューラーを設定
       decrisper: ダイナミック閾値を有効
+      charRef: キャラクターリファレンスを有効にする (v4.5モデルのみ)
+      charRefMode: リファレンスモードを設定 (character, style, character&style、デフォルト character&style)
+      charRefFidelity: 忠実度を設定 (0-1、デフォルト1)
+      preciseRef: 精密リファレンスを有効にする (v4.5モデルのみ)、最大6枚の画像をアップロード可能。画像1枚につきさらに5ポイント消費
+      preciseRefParams: 精密リファレンスパラメータを設定（引用符で囲み、次の画像のパラメータはセミコロンで区切る。書式：mode,strength,fidelity、例：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）modeはcs（キャラ+スタイル）、s（スタイルのみ）、c（キャラのみ）から選択、strength（0-1）、fidelity（0-1）、デフォルトcs,1,1
 
     messages:
       queue-position: 現在キューに {0} 件のタスク、あなたには {1} 件のタスクが処理中です
@@ -88,6 +93,16 @@ commands:
       inpaint-no-mask: 画像が検出されませんでした。
       inpaint-error: インペイント処理に失敗しました。
       inpaint-url-expired: 画像リンクが期限切れです。
+      charref-wait-image: 60秒以内にキャラクターリファレンス画像を送信してください。
+      charref-processing: キャラクターリファレンス画像を処理中...
+      charref-timeout: タイムアウト、キャラクターリファレンスはキャンセルされました。
+      charref-no-image: 画像が検出されませんでした、キャラクターリファレンスはキャンセルされました。
+      charref-error: キャラクターリファレンスの処理に失敗しました。再試行してください。
+      charref-model-unsupported: キャラクターリファレンス機能はv4.5モデル（nai4-5 または nai4-5c）のみサポートしています。モデルを切り替えてから再試行してください。
+      preciseref-wait-image: 60秒以内に精密リファレンス画像を送信してください。「開始」を送信して収集を終了するか、「取消」を送信してタスクをキャンセルできます。最大6枚まで。
+      points-insufficient: ポイントが不足しています（現在 {0} ポイント、必要 {1} ポイント）、このタスクを実行できません。
+      points-deducted: "、{0} ポイントを前もって消費しました"
+      points-refunded: "、{0} ポイントが返還されました"
   
   novelai.reset-queue:
     description: ユーザーキュー状態をリセット
@@ -142,6 +157,15 @@ commands:
       会員 -c (自分の会員資格をキャンセル)
       会員 -u ID -c (特定のユーザーの会員資格をキャンセル)
       会員 -l (会員リストを表示)
+    options:
+      user: 対象ユーザーID
+      days: 追加または設定するメンバーシップの日数
+      addPoints: 追加または削減するポイント（負の数もサポート）
+      refreshPoints: ユーザーのポイントを更新する
+      cancel: メンバーシップをキャンセルする
+      list: 有効なすべてのメンバーをリストする
+      page: メンバーリストのページ番号を指定する
+      size: メンバーリストの1ページあたりの表示数を指定する
     messages:
       queue-position: "合計キュー: {0} 件のタスク | あなたのキュー: {1} 件のタスク"
       queue-full: キュー上限に達しました ({0})
@@ -170,3 +194,6 @@ commands:
       request-timeout: タイムアウト。
       request-failed: リクエスト失敗 ({0})。
       empty-response: 空の画像が返されました。
+      points-insufficient: ポイントが不足しています（現在 {0} ポイント、必要 {1} ポイント）、このタスクを実行できません。
+      points-deducted: "、{0} ポイントを前もって消費しました"
+      points-refunded: "、{0} ポイントが返還されました"

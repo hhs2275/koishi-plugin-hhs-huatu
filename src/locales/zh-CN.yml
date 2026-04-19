@@ -161,6 +161,15 @@ commands:
       会员 -l （查询会员列表）
       会员 -l -p 2 （查询会员列表，第2页）
       会员 -l -s 20 （查询会员列表，每页20条，按会员等级排序）
+    options:
+      user: 目标用户ID
+      days: 增加或设置的会员天数
+      addPoints: 增加或减少的用户点数（支持负数）
+      refreshPoints: 刷新用户的点数
+      cancel: 取消会员资格
+      list: 列出所有未过期的有效会员
+      page: 指定会员列表的页码
+      size: 指定会员列表每页显示的条数
     messages:
       queue-position: 当前总队列：{0} 个任务 | 你的队列：{1} 个任务
       queue-full: 当前等待任务已达到上限({0}),请稍后再试

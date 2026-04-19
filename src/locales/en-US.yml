@@ -42,7 +42,8 @@ commands:
       charRef: Enable Character Reference (v4.5 models only)
       charRefMode: Set reference mode (character, style, character&style, default character&style)
       charRefFidelity: Set fidelity (0-1, default 1)
-
+      preciseRef: "Enable precise reference (v4.5 models only), allows up to 6 images. Deducts 5 extra points per image."
+      preciseRefParams: "Set precise reference parameters (enclose in quotes, separate parameters for next image with semicolon, format: mode,strength,fidelity, e.g.: nai-4.5 -P -p \"cs,1,1;cs,0.5,0.5\") mode can be cs (character+style), s (style only), c (character only), strength (0-1), fidelity (0-1), default: cs,1,1"
 
     messages:
       queue-position: Currently {0} tasks in queue, you have {1} tasks being processed
@@ -98,7 +99,10 @@ commands:
       charref-no-image: No image detected, character reference has been cancelled.
       charref-error: Character reference processing failed, please try again.
       charref-model-unsupported: Character reference only supports v4.5 models (nai4-5 or nai4-5c), please switch models and try again.
-  
+      preciseref-wait-image: "Please send precise reference images within 60 seconds. You can send \"start\" to finish collecting, or \"cancel\" to cancel the task, max 6 images."
+      points-insufficient: "Insufficient points (current: {0}, required: {1}), cannot execute this task."
+      points-deducted: ", {0} points pre-deducted"
+      points-refunded: ", {0} points refunded"  
   novelai.reset-queue:
     description: Reset User Queue Status
     usage: Reset queue count and cooldown for a specified user
@@ -154,6 +158,15 @@ commands:
       member -l (View member list)
       member -l -p 2 (View member list, page 2)
       member -l -s 20 (View member list, 20 per page, sorted by membership level)
+    options:
+      user: Target user ID
+      days: Number of days to add or set for membership
+      addPoints: Number of points to add or deduct (supports negative values)
+      refreshPoints: Refresh points for the user
+      cancel: Cancel membership
+      list: List all active valid members
+      page: Specify the page number of the member list
+      size: Specify the number of items per page in the member list
     messages:
       queue-position: "Total queue: {0} tasks | Your queue: {1} tasks"
       queue-full: Queue limit reached ({0}), please try again later
@@ -182,3 +195,6 @@ commands:
       request-timeout: Request timeout.
       request-failed: Request failed ({0}), please try again later.
       empty-response: Server returned an empty image, please try again later.
+      points-insufficient: "Insufficient points (current: {0}, required: {1}), cannot execute this task."
+      points-deducted: ", {0} points pre-deducted"
+      points-refunded: ", {0} points refunded"

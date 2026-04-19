@@ -39,6 +39,11 @@ commands:
       smeaDyn: Activer DYN
       scheduler: Définir le planificateur
       decrisper: Activer le seuil dynamique
+      charRef: Activer la référence de personnage (modèles v4.5 uniquement)
+      charRefMode: Définir le mode de référence (character, style, character&style, par défaut character&style)
+      charRefFidelity: Définir la fidélité (0-1, par défaut 1)
+      preciseRef: "Activer la référence précise (modèles v4.5 uniquement), permet jusqu'à 6 images. Déduit 5 points supplémentaires par image."
+      preciseRefParams: "Définir les paramètres de référence précise (mettre entre guillemets, séparer les paramètres de l'image suivante avec un point-virgule, format : mode,strength,fidelity, par ex. : nai-4.5 -P -p \"cs,1,1;cs,0.5,0.5\") mode peut être cs (personnage+style), s (style uniquement), c (personnage uniquement), strength (0-1), fidelity (0-1), par défaut cs,1,1"
 
 
     messages:
@@ -89,6 +94,16 @@ commands:
       inpaint-no-mask: Aucune image détectée, l'inpainting a été annulé.
       inpaint-error: Échec du traitement de l'inpainting, veuillez réessayer.
       inpaint-url-expired: Le lien de l'image a expiré.
+      charref-wait-image: Veuillez envoyer une image de référence de personnage dans les 60 secondes.
+      charref-processing: Traitement de l'image de référence de personnage...
+      charref-timeout: Délai dépassé, la référence de personnage a été annulée.
+      charref-no-image: Aucune image détectée, la référence de personnage a été annulée.
+      charref-error: Échec du traitement de la référence de personnage, veuillez réessayer.
+      charref-model-unsupported: La référence de personnage n'est prise en charge que par les modèles v4.5 (nai4-5 ou nai4-5c), veuillez changer de modèle et réessayer.
+      preciseref-wait-image: "Veuillez envoyer les images de référence précises dans les 60 secondes. Vous pouvez envoyer \"commencer\" pour terminer la collecte, ou \"annuler\" pour annuler la tâche, max 6 images."
+      points-insufficient: "Points insuffisants (actuel : {0}, requis : {1}), impossible d'exécuter cette tâche."
+      points-deducted: ", {0} points pré-déduits"
+      points-refunded: ", {0} points remboursés"
   
   novelai.reset-queue:
     description: Réinitialiser le statut de la file d'attente utilisateur
@@ -145,6 +160,15 @@ commands:
       membre -l (Afficher la liste des membres)
       membre -l -p 2 (Afficher la liste des membres, page 2)
       membre -l -s 20 (Afficher la liste des membres, 20 par page, trié par niveau d'adhésion)
+    options:
+      user: ID utilisateur cible
+      days: Nombre de jours à ajouter ou à définir pour l'abonnement
+      addPoints: Nombre de points à ajouter ou à déduire (prend en charge les valeurs négatives)
+      refreshPoints: Actualiser les points de l'utilisateur
+      cancel: Annuler l'abonnement
+      list: Lister tous les membres actifs valides
+      page: Spécifier le numéro de page de la liste des membres
+      size: Spécifier le nombre d'éléments par page dans la liste des membres
     messages:
       queue-position: "File d'attente totale : {0} tâches | Votre file d'attente : {1} tâches"
       queue-full: Limite de la file d'attente atteinte ({0}), veuillez réessayer plus tard
@@ -173,3 +197,6 @@ commands:
       request-timeout: Délai d'attente de la requête dépassé.
       request-failed: Échec de la requête ({0}), veuillez réessayer plus tard.
       empty-response: Le serveur a renvoyé une image vide, veuillez réessayer plus tard.
+      points-insufficient: "Points insuffisants (actuel : {0}, requis : {1}), impossible d'exécuter cette tâche."
+      points-deducted: ", {0} points pré-déduits"
+      points-refunded: ", {0} points remboursés"

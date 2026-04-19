@@ -2023,8 +2023,10 @@ export function apply(ctx: Context, config: Config) {
     .alias('会员')
     .option('user', '-u <user:string>')
     .option('days', '-d <days:number>')
+    .option('addPoints', '-a <points:number>')
+    .option('refreshPoints', '-f')
     .option('cancel', '-c')
-    .option('list', '-l 列出所有未过期的会员')
+    .option('list', '-l ')
     .option('page', '-p <page:number>', { fallback: 1 })
     .option('size', '-s <size:number>', { fallback: 10 })
     .action(async ({ session, options }) => {
@@ -2104,12 +2106,45 @@ export function apply(ctx: Context, config: Config) {
       }
 
       // 设置或取消会员需要管理员权限
-      if ((options.days || options.cancel) && session.user.authority < config.membershipAuthLv) {
+      if ((options.days || options.cancel || options.addPoints !== undefined || options.refreshPoints) && session.user.authority < config.membershipAuthLv) {
         return '您没有权限设置会员状态'
       }
 
       // 检查并重置每日使用次数
       membershipSystem.checkAndResetDailyUsage(targetId)
+
+      // 如果是刷新点数
+      if (options.refreshPoints) {
+        if (!config.pointsEnabled) {
+          return '点数控制未启用'
+        }
+        if (config.pointsMode !== 'periodic') {
+          return '当前点数模式为永久模式，无需刷新'
+        }
+        if (!userData[targetId]) {
+          return `用户 ${targetId} 暂无使用记录，无法刷新点数`
+        }
+        const refreshAmount = config.pointsRefreshAmount || 200
+        userData[targetId].points = refreshAmount
+        // 保存用户数据
+        await membershipSystem.saveUserData()
+        return `已刷新用户 ${targetId} 的点数，当前剩余：${refreshAmount}`
+      }
+
+      // 如果是添加点数
+      if (options.addPoints !== undefined) {
+        if (!Number.isInteger(options.addPoints)) {
+          return '点数必须是整数'
+        }
+        if (!userData[targetId]) {
+          return `用户 ${targetId} 暂无使用记录，无法添加点数`
+        }
+        userData[targetId].points = (userData[targetId].points || 0) + options.addPoints
+        // 保存用户数据
+        await membershipSystem.saveUserData()
+        const action = options.addPoints >= 0 ? '增加' : '扣除'
+        return `已为用户 ${targetId} ${action} ${Math.abs(options.addPoints)} 点数，当前剩余：${userData[targetId].points}`
+      }
 
       // 如果是取消会员
       if (options.cancel) {
@@ -2224,7 +2259,7 @@ export function apply(ctx: Context, config: Config) {
         return `${usageInfo}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
       } else {
         const remaining = config.nonMemberDailyLimit - user.dailyUsage
-        
+
         let pointsInfo = ''
         if (config.pointsEnabled) {
           pointsInfo = `\n点数余额：${user.points || 0}`
@@ -2235,7 +2270,7 @@ export function apply(ctx: Context, config: Config) {
             }
           }
         }
-        
+
         if (isQueryingSelf) {
           return session.text('commands.novelai.messages.non-member-usage', [
             config.nonMemberDailyLimit,

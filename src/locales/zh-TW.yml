@@ -39,7 +39,11 @@ commands:
       smeaDyn: 啟用 DYN
       scheduler: 設定調度器
       decrisper: 啟用動態閾值
-
+      charRef: 啟用角色參考功能（僅支援 v4.5 模型）
+      charRefMode: 設定參考模式 (character, style, character&style，預設 character&style)
+      charRefFidelity: 設定保真度 (0-1，預設 1)
+      preciseRef: 啟用精準參考功能（僅支援 v4.5 模型），可以傳6張圖片。每張圖片額外扣除5點數
+      preciseRefParams: 設定精準參考參數（用引號引用起來，下一張圖片參數用分號隔開，格式：mode,strength,fidelity，例如：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）mode可選cs（角色+風格），s（僅風格），c（僅角色），strength（0-1），fidelity（0-1），預設cs,1,1
     messages:
       queue-position: 目前佇列中有 {0} 個任務，你有 {1} 個任務正在處理
       queue-full: 目前等待任務已達到上限({0})，請稍後再試
@@ -88,7 +92,16 @@ commands:
       inpaint-no-mask: 未偵測到圖像，局部重繪已取消。
       inpaint-error: 局部重繪處理失敗，請重試。
       inpaint-url-expired: 圖像連結已過期。
-  
+      charref-wait-image: 請在60秒內發送角色參考圖片。
+      charref-processing: 正在處理角色參考圖片...
+      charref-timeout: 等待逾時，角色參考已取消。
+      charref-no-image: 未偵測到圖片，角色參考已取消。
+      charref-error: 角色參考處理失敗，請重試。
+      charref-model-unsupported: 角色參考功能僅支援 v4.5 模型（nai4-5 或 nai4-5c），請切換模型後重試。
+      preciseref-wait-image: 請在60秒內發送精準參考圖片。您可以發送"開始"結束收集，發送"取消"取消任務，最多6張。
+      points-insufficient: 您的點數不足（目前 {0} 點，需要 {1} 點），無法執行此任務。
+      points-deducted: ，預扣除 {0} 點數
+      points-refunded: ，已返還 {0} 點數  
   novelai.reset-queue:
     description: 重置使用者佇列狀態
     usage: 重置指定使用者的佇列計數和CD
@@ -144,6 +157,15 @@ commands:
       會員 -l （查詢會員列表）
       會員 -l -p 2 （查詢會員列表，第2頁）
       會員 -l -s 20 （查詢會員列表，每頁20條，按會員等級排序）
+    options:
+      user: 目標用戶ID
+      days: 增加或設置的會員天数
+      addPoints: 增加或減少的用戶點數（支援負數）
+      refreshPoints: 刷新用戶的點數
+      cancel: 取消會員資格
+      list: 列出所有未過期的有效會員
+      page: 指定會員列表的頁碼
+      size: 指定會員列表每頁顯示的條數
     messages:
       queue-position: 目前總佇列：{0} 個任務 | 你的佇列：{1} 個任務
       queue-full: 目前等待任務已達到上限({0}),請稍後再試
@@ -172,3 +194,6 @@ commands:
       request-timeout: 請求逾時。
       request-failed: 請求失敗 ({0})，請稍後重試。
       empty-response: 伺服器返回了空白圖像，請稍後重試。
+      points-insufficient: 您的點數不足（目前 {0} 點，需要 {1} 點），無法執行此任務。
+      points-deducted: ，預扣除 {0} 點
+      points-refunded: ，已返還 {0} 點
