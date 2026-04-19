@@ -734,6 +734,10 @@ export class MembershipSystem {
     if (this.userData[userId].isMember && this.userData[userId].membershipExpiry < Date.now()) {
       this.userData[userId].isMember = false
       this.userData[userId].dailyLimit = this.config.nonMemberDailyLimit
+
+      if (this.config.pointsEnabled && this.config.pointsMode === 'periodic' && !this.config.pointsRefreshIncludeNonMember) {
+        this.userData[userId].points = 0
+      }
     }
   }
 

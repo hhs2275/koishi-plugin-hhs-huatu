@@ -2124,6 +2124,12 @@ export function apply(ctx: Context, config: Config) {
         if (!userData[targetId]) {
           return `用户 ${targetId} 暂无使用记录，无法刷新点数`
         }
+        if (!config.pointsRefreshIncludeNonMember) {
+          const user = userData[targetId]
+          if (!user.isMember || user.membershipExpiry < Date.now()) {
+            return `刷新范围不包含非会员，无法为该用户刷新点数`
+          }
+        }
         const refreshAmount = config.pointsRefreshAmount || 200
         userData[targetId].points = refreshAmount
         // 保存用户数据
@@ -2155,6 +2161,10 @@ export function apply(ctx: Context, config: Config) {
         userData[targetId].isMember = false
         userData[targetId].membershipExpiry = 0
         userData[targetId].dailyLimit = config.nonMemberDailyLimit
+
+        if (config.pointsEnabled && config.pointsMode === 'periodic' && !config.pointsRefreshIncludeNonMember) {
+          userData[targetId].points = 0
+        }
 
         // 保存用户数据
         await membershipSystem.saveUserData()
