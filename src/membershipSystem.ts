@@ -37,6 +37,9 @@ export class MembershipSystem {
     // 监听配置变化
     ctx.accept(['membershipEnabled', 'memberCleanupEnabled', 'memberCleanupTime', 'memberExpiryReminderEnabled', 'memberReminderTime', 'memberReminderHours', 'pointsEnabled', 'pointsMode', 'pointsRefreshCycleDays'], () => {
       ctx.logger.info('会员系统配置已更新，重新安排定时任务')
+      if (this.config.membershipEnabled && Object.keys(this.userData).length === 0) {
+        this.loadUserDataFromDB().catch(err => this.ctx.logger.error('动态加载用户数据失败', err))
+      }
       this.setupCleanupTask()
       this.setupReminderTask()
       this.setupPointsRefreshTask()
@@ -79,9 +82,20 @@ export class MembershipSystem {
 
   // 从数据库加载数据到内存缓存
   async loadUserDataFromDB() {
+    if (!this.config.membershipEnabled) {
+      if (this.config.debugLog) this.ctx.logger.info('会员系统未启用，跳过从数据库加载用户数据')
+      return;
+    }
+    
     try {
       const rows = await this.ctx.database.get('hhs_huatu_user', {})
+      let loadedCount = 0;
       for (const row of rows) {
+        if (row.visitorId === '_system_points_refresh') {
+          this.lastPointsRefreshTime = row.lastUsed || 0;
+          continue;
+        }
+        loadedCount++;
         this.userData[row.visitorId] = {
           isMember: row.isMember,
           membershipExpiry: row.membershipExpiry,
@@ -92,9 +106,27 @@ export class MembershipSystem {
           points: row.points,
         }
       }
-      this.ctx.logger.info(`会员系统数据从数据库加载成功，共 ${rows.length} 条记录`)
+      this.ctx.logger.info(`会员系统数据从数据库加载成功，共 ${loadedCount} 条记录`)
     } catch (err) {
       this.ctx.logger.error('从数据库加载会员系统数据失败', err)
+    }
+  }
+
+  // 保存点数刷新时间记录
+  async saveLastPointsRefreshTime() {
+    try {
+      await this.ctx.database.upsert('hhs_huatu_user', [{
+        visitorId: '_system_points_refresh',
+        isMember: false,
+        membershipExpiry: 0,
+        dailyUsage: 0,
+        lastUsed: this.lastPointsRefreshTime,
+        dailyLimit: 0,
+        lastDrawTime: 0,
+        points: 0,
+      }], ['visitorId'])
+    } catch (err) {
+      this.ctx.logger.error('保存点数刷新时间失败', err)
     }
   }
 
@@ -318,8 +350,10 @@ export class MembershipSystem {
       refreshedCount++
     }
 
+    this.lastPointsRefreshTime = now
+    await this.saveLastPointsRefreshTime()
+
     if (refreshedCount > 0) {
-      this.lastPointsRefreshTime = now
       await this.saveUserData()
     }
 
@@ -329,6 +363,22 @@ export class MembershipSystem {
 
     this.ctx.logger.info(message)
     return { count: refreshedCount, message }
+  }
+
+  /**
+   * 获取距离下次点数刷新的天数
+   */
+  getDaysUntilNextRefresh(): number {
+    if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') return -1
+
+    const cycleDays = this.config.pointsRefreshCycleDays || 30
+    const cycleMs = cycleDays * 24 * 60 * 60 * 1000
+    const now = Date.now()
+
+    if (this.lastPointsRefreshTime === 0) return 0
+
+    const remainDays = Math.ceil((this.lastPointsRefreshTime + cycleMs - now) / (24 * 60 * 60 * 1000))
+    return remainDays > 0 ? remainDays : 0
   }
 
   /**

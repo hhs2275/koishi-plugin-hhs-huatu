@@ -1938,9 +1938,17 @@ export function apply(ctx: Context, config: Config) {
               }
             }
 
+            // 为每个重画任务创建独立的 options 副本，并注入 _deductedPoints
+            // 这是因为 generateImage 在请求失败时通过 return 而非 throw 处理错误，
+            // 所以 reject 回调不会被调用，需要依靠 generateImage 内部的退款逻辑
+            const taskOptions = { ...lastTask.options }
+            if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
+              taskOptions._deductedPoints = lastTask.pointsCost
+            }
+
             queueSystem.taskQueue.push({
               session: taskSession,  // 使用新创建的session对象
-              options: lastTask.options,
+              options: taskOptions,
               input: lastTask.input,
               isRedraw: true,
               resolve: (value) => {
@@ -1949,9 +1957,13 @@ export function apply(ctx: Context, config: Config) {
               },
               reject: (err) => {
                 queueSystem.userTasks[currentUserId]--
-                // 单次重画任务失败，退还该次对应的点数
-                if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
-                  membershipSystem.refundPoints(currentUserId, lastTask.pointsCost)
+                // 单次重画任务失败，退还该次对应的点数（后备方案，当 generateImage throw 时触发）
+                // 检查 taskOptions._deductedPoints 而非 lastTask.pointsCost，
+                // 因为 generateImage 内部退款后会将 _deductedPoints 设为 0，避免双重退款
+                const remainingPoints = taskOptions._deductedPoints || 0
+                if (config.membershipEnabled && config.pointsEnabled && remainingPoints > 0) {
+                  taskOptions._deductedPoints = 0 // 标记已退款
+                  membershipSystem.refundPoints(currentUserId, remainingPoints)
                     .catch(refundErr => ctx.logger.error(`[重画] 退还点数异常: ${refundErr.message}`))
                 }
                 targetBot.sendMessage(
@@ -2201,19 +2213,37 @@ export function apply(ctx: Context, config: Config) {
         if (config.pointsEnabled) {
           const points = user.points || 0
           pointsInfo = `\n点数余额：${points}`
+          if (config.pointsMode === 'periodic') {
+            const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
+            if (remainDaysRefresh >= 0) {
+              pointsInfo += `\n下次刷新时间：${remainDaysRefresh}天后`
+            }
+          }
         }
 
         return `${usageInfo}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
       } else {
         const remaining = config.nonMemberDailyLimit - user.dailyUsage
+        
+        let pointsInfo = ''
+        if (config.pointsEnabled) {
+          pointsInfo = `\n点数余额：${user.points || 0}`
+          if (config.pointsMode === 'periodic' && config.pointsRefreshIncludeNonMember) {
+            const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
+            if (remainDaysRefresh >= 0) {
+              pointsInfo += `\n下次刷新时间：${remainDaysRefresh}天后`
+            }
+          }
+        }
+        
         if (isQueryingSelf) {
           return session.text('commands.novelai.messages.non-member-usage', [
             config.nonMemberDailyLimit,
             user.dailyUsage,
             remaining
-          ])
+          ]) + pointsInfo
         } else {
-          return `用户 ${targetId} 是非会员\n每日限额：${config.nonMemberDailyLimit} 次\n已使用：${user.dailyUsage} 次\n剩余：${remaining} 次${config.pointsEnabled ? '\n点数余额：' + (user.points || 0) : ''}`
+          return `用户 ${targetId} 是非会员\n每日限额：${config.nonMemberDailyLimit} 次\n已使用：${user.dailyUsage} 次\n剩余：${remaining} 次${pointsInfo}`
         }
       }
     })
