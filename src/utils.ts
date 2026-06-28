@@ -586,12 +586,53 @@ export function alignTo64(size: number): number {
 }
 
 /**
+ * NovelAI 最大总像素数限制（不包括该值本身）
+ * 经测试：28*64 x 28*64 = 1792x1792 = 3,211,264 不能生成
+ *         27*64 x 28*64 = 1728x1792 = 3,096,576 可以生成
+ */
+export const NAI_MAX_PIXELS = 3211264
+
+/**
+ * 将宽高限制在 NovelAI 最大像素限制范围内
+ * 如果总像素数 >= NAI_MAX_PIXELS，等比缩小并对齐到64的倍数
+ * @param width 原始宽度（已对齐64）
+ * @param height 原始高度（已对齐64）
+ * @returns 缩小后的尺寸和是否发生了缩小
+ */
+export function clampToNAILimit(width: number, height: number): { width: number; height: number; clamped: boolean } {
+  const pixels = width * height
+  if (pixels < NAI_MAX_PIXELS) {
+    return { width, height, clamped: false }
+  }
+
+  // 计算缩放比例，使得总像素数刚好低于限制
+  // 使用 NAI_MAX_PIXELS - 1 确保严格小于
+  const scale = Math.sqrt((NAI_MAX_PIXELS - 1) / pixels)
+  let newWidth = alignTo64(Math.floor(width * scale / 64) * 64 || 64)
+  let newHeight = alignTo64(Math.floor(height * scale / 64) * 64 || 64)
+
+  // 再次检查，如果仍然超过（因为 alignTo64 可能向上取整），逐步减少
+  while (newWidth * newHeight >= NAI_MAX_PIXELS) {
+    // 减少较大的那一边
+    if (newWidth >= newHeight) {
+      newWidth -= 64
+    } else {
+      newHeight -= 64
+    }
+  }
+
+  return { width: newWidth, height: newHeight, clamped: true }
+}
+
+/**
  * 将图片调暗并对齐尺寸(用于局部重绘的交互式流程)
  * @param imageData 原始图片数据
  * @param factor 调暗系数(0-1,默认0.5)
+ * @param targetWidth 可选的目标宽度（用户通过 -r 指定时传入）
+ * @param targetHeight 可选的目标高度（用户通过 -r 指定时传入）
  * @returns 调暗后的图片Data URL和对齐后的尺寸
  */
-export async function darkenImage(imageData: ImageData, factor = 0.5): Promise<{
+export async function darkenImage(imageData: ImageData, factor = 0.5, targetWidth?: number, targetHeight?: number): Promise<{
   dataUrl: string
   alignedWidth: number
   alignedHeight: number
@@ -602,10 +643,26 @@ export async function darkenImage(imageData: ImageData, factor = 0.5): Promise<{
 
   // 获取原始尺寸
   const metadata = await sharp.default(buffer).metadata()
-  const alignedWidth = alignTo64(metadata.width)
-  const alignedHeight = alignTo64(metadata.height)
 
-  // 先resize到64倍数，再调暗
+  let alignedWidth: number
+  let alignedHeight: number
+
+  if (targetWidth && targetHeight) {
+    // 如果用户通过 -r 指定了目标尺寸，使用用户指定的尺寸（已对齐64）
+    alignedWidth = alignTo64(targetWidth)
+    alignedHeight = alignTo64(targetHeight)
+  } else {
+    // 否则使用原图尺寸对齐到64倍数
+    alignedWidth = alignTo64(metadata.width)
+    alignedHeight = alignTo64(metadata.height)
+  }
+
+  // 检查 NovelAI 最大像素限制并自动缩小
+  const clamped = clampToNAILimit(alignedWidth, alignedHeight)
+  alignedWidth = clamped.width
+  alignedHeight = clamped.height
+
+  // 先resize到目标尺寸，再调暗
   const darkenedBuffer = await sharp.default(buffer)
     .resize(alignedWidth, alignedHeight, { fit: 'fill' })
     .modulate({ brightness: factor })
@@ -623,8 +680,9 @@ export async function darkenImage(imageData: ImageData, factor = 0.5): Promise<{
     dataUrl: `data:image/png;base64,${base64}`,
     alignedWidth,
     alignedHeight,
-    originalBuffer: alignedOriginal
-  }
+    originalBuffer: alignedOriginal,
+    sizeClamped: clamped.clamped,
+  } as any
 }
 
 /**

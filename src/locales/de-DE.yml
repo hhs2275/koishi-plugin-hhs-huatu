@@ -94,6 +94,9 @@ commands:
       inpaint-no-mask: Kein Bild erkannt, Inpainting wurde abgebrochen.
       inpaint-error: Inpainting-Verarbeitung fehlgeschlagen, bitte erneut versuchen.
       inpaint-url-expired: Bildlink ist abgelaufen.
+      inpaint-mask-download-failed: Maskenbild-Download fehlgeschlagen. Bitte senden Sie das weiß markierte Maskenbild innerhalb von 60 Sekunden erneut.
+      inpaint-image-download-failed: Referenzbild-Download fehlgeschlagen. Bitte senden Sie das Originalbild für Inpainting innerhalb von 60 Sekunden erneut.
+      inpaint-size-clamped: "Bildgröße überschreitet das NovelAI-Maximum, automatisch auf {0}x{1} verkleinert."
       charref-wait-image: Bitte senden Sie innerhalb von 60 Sekunden ein Charakter-Referenzbild.
       charref-processing: Charakter-Referenzbild wird verarbeitet...
       charref-timeout: Timeout, Charakter-Referenz wurde abgebrochen.

@@ -92,6 +92,9 @@ commands:
       inpaint-no-mask: 未偵測到圖像，局部重繪已取消。
       inpaint-error: 局部重繪處理失敗，請重試。
       inpaint-url-expired: 圖像連結已過期。
+      inpaint-mask-download-failed: 蒙版圖下載失敗，請在60秒內重新發送塗白的蒙版圖。
+      inpaint-image-download-failed: 參考圖下載失敗，請在60秒內重新發送需要局部重繪的原圖。
+      inpaint-size-clamped: "原圖尺寸超過 NovelAI 最大限制，已自動縮小為 {0}x{1}。"
       charref-wait-image: 請在60秒內發送角色參考圖片。
       charref-processing: 正在處理角色參考圖片...
       charref-timeout: 等待逾時，角色參考已取消。

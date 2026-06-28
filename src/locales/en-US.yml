@@ -93,6 +93,9 @@ commands:
       inpaint-no-mask: No image detected, inpainting has been cancelled.
       inpaint-error: Inpainting processing failed, please try again.
       inpaint-url-expired: Image link has expired.
+      inpaint-mask-download-failed: Mask image download failed. Please resend the mask image with white painted areas within 60 seconds.
+      inpaint-image-download-failed: Reference image download failed. Please resend the original image for inpainting within 60 seconds.
+      inpaint-size-clamped: "Image size exceeds NovelAI maximum limit, automatically resized to {0}x{1}."
       charref-wait-image: Please send a character reference image within 60 seconds.
       charref-processing: Processing character reference image...
       charref-timeout: Timeout, character reference has been cancelled.

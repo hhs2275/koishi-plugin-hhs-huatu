@@ -1,7 +1,7 @@
 import { Computed, Context, Dict, h, Logger, omit, Quester, Session, SessionError, trimSlash } from 'koishi'
 import { Config, modelMap, models, orientMap, parseInput, sampler, upscalers, scheduler } from './config'
 import { ImageData, NovelAI, StableDiffusionWebUI, UserData, DirectorTools } from './types'
-import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage } from './utils'
+import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage, clampToNAILimit, NAI_MAX_PIXELS } from './utils'
 import { } from '@koishijs/translator'
 import { } from '@koishijs/plugin-help'
 import AdmZip from 'adm-zip'
@@ -398,8 +398,16 @@ export function apply(ctx: Context, config: Config) {
         try {
           if (config.debugLog) ctx.logger.info('[Inpaint] 检测到重画任务，正在重新下载并处理遮罩...')
 
-          // 1. 重新处理原图，获取对齐后的尺寸
-          const darkenResult = await darkenImage(image, 0.5)
+          // 确定 -r 指定的目标尺寸（如果有的话）
+          let targetWidth: number | undefined
+          let targetHeight: number | undefined
+          if (options.resolution) {
+            targetWidth = options.resolution.width
+            targetHeight = options.resolution.height
+          }
+
+          // 1. 重新处理原图，获取对齐后的尺寸（传入可选的目标尺寸）
+          const darkenResult = await darkenImage(image, 0.5, targetWidth, targetHeight) as any
 
           // 2. 下载遮罩图
           let maskImageData
@@ -423,7 +431,7 @@ export function apply(ctx: Context, config: Config) {
           options._alignedWidth = darkenResult.alignedWidth
           options._alignedHeight = darkenResult.alignedHeight
 
-          if (config.debugLog) ctx.logger.info('[Inpaint] 重画数据重建完成')
+          if (config.debugLog) ctx.logger.info(`[Inpaint] 重画数据重建完成，尺寸: ${darkenResult.alignedWidth}x${darkenResult.alignedHeight}${darkenResult.sizeClamped ? '（已自动缩小）' : ''}`)
 
         } catch (err) {
           ctx.logger.error(`[Inpaint] 重画数据恢复失败: ${err}`)
@@ -471,6 +479,17 @@ export function apply(ctx: Context, config: Config) {
         height: options.resolution.height,
         width: options.resolution.width,
       })
+    }
+
+    // ========== NovelAI 最大像素限制检查（统一兜底） ==========
+    // 局部重绘已在 darkenImage 中处理，这里对所有模式做兜底
+    if (['login', 'token'].includes(config.type)) {
+      const naiClamped = clampToNAILimit(parameters.width, parameters.height)
+      if (naiClamped.clamped) {
+        ctx.logger.info(`[NAI Limit] 图片尺寸 ${parameters.width}x${parameters.height} 超过 NovelAI 最大限制，已自动缩小为 ${naiClamped.width}x${naiClamped.height}`)
+        parameters.width = naiClamped.width
+        parameters.height = naiClamped.height
+      }
     }
 
     if (options.hiresFix || config.hiresFix) {
@@ -1331,27 +1350,59 @@ export function apply(ctx: Context, config: Config) {
             }
           }
 
-          // 2. 下载原图
-          const image = await download(ctx, imgUrl)
+          // 2. 下载原图（带重试：如果下载失败，提示用户重新发送参考图）
+          let image: ImageData
+          try {
+            image = await download(ctx, imgUrl)
+          } catch (err) {
+            ctx.logger.warn(`[Inpaint] 参考图下载失败: ${err}`)
+            await session.send(session.text('commands.novelai.messages.inpaint-image-download-failed'))
+            const retryResponse = await session.prompt(60000)
+            if (!retryResponse) {
+              return session.text('commands.novelai.messages.inpaint-timeout')
+            }
+            let retryUrl: string
+            h.transform(h.parse(retryResponse), {
+              img(attrs) { retryUrl = attrs.src; return '' },
+            })
+            if (!retryUrl) {
+              return session.text('commands.novelai.messages.inpaint-no-mask')
+            }
+            imgUrl = retryUrl
+            image = await download(ctx, imgUrl)
+          }
 
-          // 3. 调暗原图并对齐尺寸
+          // 3. 确定最终尺寸：如果用户指定了 -r，使用 -r 的尺寸；否则使用原图尺寸
+          let targetWidth: number | undefined
+          let targetHeight: number | undefined
+          if (options.resolution) {
+            targetWidth = options.resolution.width
+            targetHeight = options.resolution.height
+          }
+
+          // 4. 调暗原图并对齐尺寸（传入可选的目标尺寸）
           // 利用 JavaScript 闭包特性，darkenResult 在 await session.prompt() 期间会保留在内存中
-          const darkenResult = await darkenImage(image, 0.5)
+          const darkenResult = await darkenImage(image, 0.5, targetWidth, targetHeight) as any
 
-          // 4. 发送调暗后的图片给用户
+          // 如果尺寸被 NovelAI 限制自动缩小了，提示用户
+          if (darkenResult.sizeClamped) {
+            await session.send(session.text('commands.novelai.messages.inpaint-size-clamped', [darkenResult.alignedWidth, darkenResult.alignedHeight]))
+          }
+
+          // 5. 发送调暗后的图片给用户
           await session.send(h('', [
             h.text(session.text('commands.novelai.messages.inpaint-step1')),
             h.image(darkenResult.dataUrl)
           ]))
 
-          // 5. 等待用户发送涂白的图片（在队列外等待，不占用资源）
+          // 6. 等待用户发送涂白的图片（在队列外等待，不占用资源）
           // ⚠️ 此时函数暂停执行，darkenResult 被闭包保留
           const maskImgUrl = await session.prompt(120000)
           if (!maskImgUrl) {
             return session.text('commands.novelai.messages.inpaint-timeout')
           }
 
-          // 6. 解析用户发送的图片
+          // 7. 解析用户发送的图片
           let maskUrl: string
           h.transform(h.parse(maskImgUrl), {
             img(attrs) {
@@ -1364,27 +1415,47 @@ export function apply(ctx: Context, config: Config) {
             return session.text('commands.novelai.messages.inpaint-no-mask')
           }
 
-          // 7. 下载用户涂白的图片并使用防伪影算法提取遮罩
-          // 直接使用 darkenResult.alignedWidth 和 darkenResult.alignedHeight
-          const maskImageData = await download(ctx, maskUrl)
+          // 8. 下载用户涂白的图片（带重试：如果蒙版图下载失败，提示用户重新发送）
+          let maskImageData: ImageData
+          try {
+            maskImageData = await download(ctx, maskUrl)
+          } catch (err) {
+            ctx.logger.warn(`[Inpaint] 蒙版图下载失败: ${err}`)
+            await session.send(session.text('commands.novelai.messages.inpaint-mask-download-failed'))
+            const retryMaskResponse = await session.prompt(120000)
+            if (!retryMaskResponse) {
+              return session.text('commands.novelai.messages.inpaint-timeout')
+            }
+            let retryMaskUrl: string
+            h.transform(h.parse(retryMaskResponse), {
+              img(attrs) { retryMaskUrl = attrs.src; return '' },
+            })
+            if (!retryMaskUrl) {
+              return session.text('commands.novelai.messages.inpaint-no-mask')
+            }
+            maskUrl = retryMaskUrl
+            maskImageData = await download(ctx, maskUrl)
+          }
+
+          // 9. 使用防伪影算法提取遮罩
           const maskBase64 = await extractMaskWithAntiArtifact(
             maskImageData,
             darkenResult.alignedWidth,
             darkenResult.alignedHeight
           )
 
-            // 8. 保存 URL 到 options 中（供重画功能使用，避免存储 Base64 占用内存）
+            // 10. 保存 URL 到 options 中（供重画功能使用，避免存储 Base64 占用内存）
             ; (options as any)._originalUrl = imgUrl
             ; (options as any)._maskUrl = maskUrl
 
-            // 9. 保存遮罩和原图到options中（这些会传递给 generateImage）
+            // 11. 保存遮罩和原图到options中（这些会传递给 generateImage）
             ; (options as any)._maskBase64 = maskBase64
             ; (options as any)._originalBase64 = darkenResult.originalBuffer.toString('base64')
             ; (options as any)._alignedWidth = darkenResult.alignedWidth
             ; (options as any)._alignedHeight = darkenResult.alignedHeight
 
           if (config.debugLog) {
-            ctx.logger.info(`[Inpaint] 交互完成，成功提取遮罩，尺寸: ${darkenResult.alignedWidth}x${darkenResult.alignedHeight}，mask大小: ${maskBase64.length} 字节`)
+            ctx.logger.info(`[Inpaint] 交互完成，成功提取遮罩，尺寸: ${darkenResult.alignedWidth}x${darkenResult.alignedHeight}，mask大小: ${maskBase64.length} 字节${darkenResult.sizeClamped ? '（已自动缩小）' : ''}`)
           }
         } catch (err) {
           ctx.logger.error(err)
@@ -1494,7 +1565,12 @@ export function apply(ctx: Context, config: Config) {
       if (config.pointsEnabled && config.membershipEnabled) {
         // 确定分辨率
         let resWidth = 832, resHeight = 1216
-        if (options.resolution) {
+
+        // 局部重绘时优先使用实际的对齐后尺寸（这才是真正发给 API 的尺寸）
+        if (options.inpaint && (options as any)._alignedWidth && (options as any)._alignedHeight) {
+          resWidth = (options as any)._alignedWidth
+          resHeight = (options as any)._alignedHeight
+        } else if (options.resolution) {
           resWidth = options.resolution.width || 832
           resHeight = options.resolution.height || 1216
         } else {
@@ -2261,7 +2337,7 @@ export function apply(ctx: Context, config: Config) {
           if (config.pointsMode === 'periodic') {
             const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
             if (remainDaysRefresh >= 0) {
-              pointsInfo += `\n下次刷新时间：${remainDaysRefresh}天后`
+              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后`
             }
           }
         }
@@ -2276,7 +2352,7 @@ export function apply(ctx: Context, config: Config) {
           if (config.pointsMode === 'periodic' && config.pointsRefreshIncludeNonMember) {
             const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
             if (remainDaysRefresh >= 0) {
-              pointsInfo += `\n下次刷新时间：${remainDaysRefresh}天后`
+              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后`
             }
           }
         }

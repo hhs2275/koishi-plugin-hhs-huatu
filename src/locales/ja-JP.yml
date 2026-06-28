@@ -93,6 +93,9 @@ commands:
       inpaint-no-mask: 画像が検出されませんでした。
       inpaint-error: インペイント処理に失敗しました。
       inpaint-url-expired: 画像リンクが期限切れです。
+      inpaint-mask-download-failed: マスク画像のダウンロードに失敗しました。60秒以内に白く塗ったマスク画像を再送信してください。
+      inpaint-image-download-failed: 参照画像のダウンロードに失敗しました。60秒以内にインペイント用の元画像を再送信してください。
+      inpaint-size-clamped: "画像サイズがNovelAIの最大制限を超えたため、自動的に{0}x{1}に縮小されました。"
       charref-wait-image: 60秒以内にキャラクターリファレンス画像を送信してください。
       charref-processing: キャラクターリファレンス画像を処理中...
       charref-timeout: タイムアウト、キャラクターリファレンスはキャンセルされました。

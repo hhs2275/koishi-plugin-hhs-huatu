@@ -94,6 +94,9 @@ commands:
       inpaint-no-mask: Aucune image détectée, l'inpainting a été annulé.
       inpaint-error: Échec du traitement de l'inpainting, veuillez réessayer.
       inpaint-url-expired: Le lien de l'image a expiré.
+      inpaint-mask-download-failed: "Échec du téléchargement de l'image masque. Veuillez renvoyer l'image masque avec les zones peintes en blanc dans les 60 secondes."
+      inpaint-image-download-failed: "Échec du téléchargement de l'image de référence. Veuillez renvoyer l'image originale pour l'inpainting dans les 60 secondes."
+      inpaint-size-clamped: "La taille de l'image dépasse la limite maximale de NovelAI, automatiquement redimensionnée à {0}x{1}."
       charref-wait-image: Veuillez envoyer une image de référence de personnage dans les 60 secondes.
       charref-processing: Traitement de l'image de référence de personnage...
       charref-timeout: Délai dépassé, la référence de personnage a été annulée.
