@@ -3027,7 +3027,13 @@ NovelAI Director Tools 图像处理工具
 
         if ((totalWithCurrent > 0 || userQueue > 0) && config.showQueueInfo) {
           ctx.logger.debug(`[Director Tools] 队列信息 - 总队列: ${totalWithCurrent}, 用户队列: ${userQueue}`)
-          const queueMsg = await session.text('commands.novelai.messages.queue-position', [totalWithCurrent, userQueue])
+
+          // 构建点数信息
+          const pointsInfo = (deductedPoints > 0)
+            ? session.text('commands.novelai.messages.points-deducted', [deductedPoints])
+            : ''
+
+          const queueMsg = session.text('commands.novelai.messages.queue-position', [totalWithCurrent, userQueue]) + pointsInfo
           await session.send(queueMsg)
 
           // 更新最后绘图时间
