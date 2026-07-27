@@ -1,7 +1,7 @@
 import { Computed, Context, Dict, h, Logger, omit, Quester, Session, SessionError, trimSlash } from 'koishi'
 import { Config, modelMap, models, orientMap, parseInput, sampler, upscalers, scheduler } from './config'
 import { ImageData, NovelAI, StableDiffusionWebUI, UserData, DirectorTools } from './types'
-import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage, clampToNAILimit, NAI_MAX_PIXELS } from './utils'
+import { closestMultiple, download, forceDataPrefix, getImageSize, login, NetworkError, project, resizeInput, Size, createContextWithRuntime, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage, clampToNAILimit } from './utils'
 import { } from '@koishijs/translator'
 import { } from '@koishijs/plugin-help'
 import AdmZip from 'adm-zip'
@@ -481,16 +481,6 @@ export function apply(ctx: Context, config: Config) {
       })
     }
 
-    // ========== NovelAI 最大像素限制检查（统一兜底） ==========
-    // 局部重绘已在 darkenImage 中处理，这里对所有模式做兜底
-    if (['login', 'token'].includes(config.type)) {
-      const naiClamped = clampToNAILimit(parameters.width, parameters.height)
-      if (naiClamped.clamped) {
-        ctx.logger.info(`[NAI Limit] 图片尺寸 ${parameters.width}x${parameters.height} 超过 NovelAI 最大限制，已自动缩小为 ${naiClamped.width}x${naiClamped.height}`)
-        parameters.width = naiClamped.width
-        parameters.height = naiClamped.height
-      }
-    }
 
     if (options.hiresFix || config.hiresFix) {
       parameters.strength ??= session.resolve(config.strength)
@@ -1380,18 +1370,42 @@ export function apply(ctx: Context, config: Config) {
             targetHeight = options.resolution.height
           }
 
-          // 4. 调暗原图并对齐尺寸（传入可选的目标尺寸）
-          // 利用 JavaScript 闭包特性，darkenResult 在 await session.prompt() 期间会保留在内存中
-          const darkenResult = await darkenImage(image, 0.5, targetWidth, targetHeight) as any
+          // 4. 检查尺寸并预估点数
+          const sharp = require('sharp')
+          const metadata = await sharp(Buffer.from(image.buffer)).metadata()
+          const alignTo64 = (size: number) => Math.ceil(size / 64) * 64
+          const alignedWidth = targetWidth ? alignTo64(targetWidth) : alignTo64(metadata.width)
+          const alignedHeight = targetHeight ? alignTo64(targetHeight) : alignTo64(metadata.height)
 
-          // 如果尺寸被 NovelAI 限制自动缩小了，提示用户
-          if (darkenResult.sizeClamped) {
-            await session.send(session.text('commands.novelai.messages.inpaint-size-clamped', [darkenResult.alignedWidth, darkenResult.alignedHeight]))
+          const maxPixels = session.resolve(config.maxPixels) ?? 3211264
+          const clamped = clampToNAILimit(alignedWidth, alignedHeight, maxPixels)
+          if (clamped.clamped) {
+            return session.text('commands.novelai.messages.inpaint-size-exceeded', [alignedWidth, alignedHeight, clamped.recommendedWidth, clamped.recommendedHeight])
           }
+
+          let costInfo = ''
+          if (config.pointsEnabled) {
+            const steps = options.steps ?? session.resolve(config.imageSteps) ?? 23
+            const resolvedSmeaDyn = options.smeaDyn ?? config.smeaDyn ?? false
+            const resolvedSmea = (options.smea ?? config.smea) || resolvedSmeaDyn
+            const pointsCost = membershipSystem.calculatePointsCost({
+              width: alignedWidth,
+              height: alignedHeight,
+              steps,
+              smea: resolvedSmea,
+              smeaDyn: resolvedSmeaDyn,
+              strength: options.strength,
+              isImg2Img: true,
+              preciseRefCount: 0,
+            }) * (options.batch || 1) * (options.iterations || 1)
+            costInfo = session.text('commands.novelai.messages.inpaint-cost-info', [pointsCost])
+          }
+
+          const darkenResult = await darkenImage(image, 0.5, targetWidth, targetHeight) as any
 
           // 5. 发送调暗后的图片给用户
           await session.send(h('', [
-            h.text(session.text('commands.novelai.messages.inpaint-step1')),
+            h.text(session.text('commands.novelai.messages.inpaint-step1', [alignedWidth, alignedHeight, costInfo])),
             h.image(darkenResult.dataUrl)
           ]))
 
@@ -1560,30 +1574,39 @@ export function apply(ctx: Context, config: Config) {
         return session.text(`commands.novelai.messages.${msgKey}`, params.map(p => parseInt(p) || p))
       }
 
+      // ========== 提取目标尺寸计算（用于尺寸限制检查和点数计算） ==========
+      let resWidth = 832, resHeight = 1216
+
+      // 局部重绘时优先使用实际的对齐后尺寸（这才是真正发给 API 的尺寸）
+      if (options.inpaint && (options as any)._alignedWidth && (options as any)._alignedHeight) {
+        resWidth = (options as any)._alignedWidth
+        resHeight = (options as any)._alignedHeight
+      } else if (options.resolution) {
+        resWidth = options.resolution.width || 832
+        resHeight = options.resolution.height || 1216
+      } else {
+        const res = session.resolve(config.resolution)
+        if (typeof res === 'string' && orientMap[res]) {
+          resWidth = orientMap[res].width
+          resHeight = orientMap[res].height
+        } else if (res && typeof res === 'object') {
+          resWidth = (res as any).width || 832
+          resHeight = (res as any).height || 1216
+        }
+      }
+
+      // ========== NovelAI 最大像素限制检查（进入队列前统一拦截） ==========
+      if (['login', 'token'].includes(config.type)) {
+        const maxPixels = session.resolve(config.maxPixels) ?? 3211264
+        const naiClamped = clampToNAILimit(resWidth, resHeight, maxPixels)
+        if (naiClamped.clamped) {
+          return session.text('commands.novelai.messages.size-exceeded', [resWidth, resHeight, naiClamped.recommendedWidth, naiClamped.recommendedHeight])
+        }
+      }
+
       // ========== 点数计算与预扣 ==========
       let pointsCost = 0
       if (config.pointsEnabled && config.membershipEnabled) {
-        // 确定分辨率
-        let resWidth = 832, resHeight = 1216
-
-        // 局部重绘时优先使用实际的对齐后尺寸（这才是真正发给 API 的尺寸）
-        if (options.inpaint && (options as any)._alignedWidth && (options as any)._alignedHeight) {
-          resWidth = (options as any)._alignedWidth
-          resHeight = (options as any)._alignedHeight
-        } else if (options.resolution) {
-          resWidth = options.resolution.width || 832
-          resHeight = options.resolution.height || 1216
-        } else {
-          const res = session.resolve(config.resolution)
-          if (typeof res === 'string' && orientMap[res]) {
-            resWidth = orientMap[res].width
-            resHeight = orientMap[res].height
-          } else if (res && typeof res === 'object') {
-            resWidth = (res as any).width || 832
-            resHeight = (res as any).height || 1216
-          }
-        }
-
         // 确定步数
         const imgUrl_check = h.select(h.parse(input || ''), 'img').length > 0 || options.inpaint
         const steps = options.steps ?? session.resolve(imgUrl_check ? config.imageSteps : config.textSteps) ?? 23

@@ -246,6 +246,7 @@ interface ParamConfig {
   noise?: Computed<number>
   resolution?: Computed<Orient | Size>
   maxResolution?: Computed<number>
+  maxPixels?: Computed<number>
 }
 
 export interface Config extends PromptConfig, ParamConfig {
@@ -536,6 +537,7 @@ export const Config = Schema.intersect([
     noise: Schema.computed(Schema.number(), options).min(0).max(1).description('默认的重绘添加噪声强度。').default(0.2),
     resolution: Schema.computed(Schema.union(['portrait', 'landscape', 'square']), options).description('默认生成的图片尺寸。').default('portrait'),
     maxResolution: Schema.computed(Schema.natural(), options).description('允许生成的宽高最大值。').default(1920),
+    maxPixels: Schema.computed(Schema.natural(), options).description('允许生成的最大总像素数(novelai不能大于等于1792x1792,否则会400错误)。').default(3211264),
   }),
 
   PromptConfig,

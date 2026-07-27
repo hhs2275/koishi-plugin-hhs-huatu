@@ -88,8 +88,11 @@ commands:
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
+      size-exceeded: "图片尺寸超过设定的最大像素限制（当前尺寸：{0}x{1}）。请使用 -r 指令缩小图片，推荐使用 -r {2}x{3}。"
       inpaint-wait-image: 请在60秒内发送需要局部重绘的原图。
-      inpaint-step1: 已将原图调暗，请使用画图工具在需要重绘的区域涂上白色，然后在120秒内发送回来。
+      inpaint-step1: 已将原图调暗（当前尺寸：{0}x{1}{2}），请使用画图工具在需要重绘的区域涂上白色，然后在120秒内发送回来。
+      inpaint-size-exceeded: "图片尺寸超过设定的最大像素限制（当前尺寸：{0}x{1}）。请使用 -r 指令缩小图片，推荐使用 -r {2}x{3}。"
+      inpaint-cost-info: "，预计花费：{0}点数"
       inpaint-step2: 请发送涂好白色区域的图片
       inpaint-timeout: 等待超时，局部重绘已取消。
       inpaint-no-mask: 未检测到图片，局部重绘已取消。

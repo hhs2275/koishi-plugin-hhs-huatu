@@ -586,33 +586,27 @@ export function alignTo64(size: number): number {
 }
 
 /**
- * NovelAI 最大总像素数限制（不包括该值本身）
- * 经测试：28*64 x 28*64 = 1792x1792 = 3,211,264 不能生成
- *         27*64 x 28*64 = 1728x1792 = 3,096,576 可以生成
- */
-export const NAI_MAX_PIXELS = 3211264
-
-/**
- * 将宽高限制在 NovelAI 最大像素限制范围内
- * 如果总像素数 >= NAI_MAX_PIXELS，等比缩小并对齐到64的倍数
+ * 将宽高限制在最大像素限制范围内
+ * 如果总像素数 >= maxPixels，计算等比缩小并对齐到64的倍数（但不实际缩小原值）
  * @param width 原始宽度（已对齐64）
  * @param height 原始高度（已对齐64）
- * @returns 缩小后的尺寸和是否发生了缩小
+ * @param maxPixels 最大像素限制
+ * @returns 推荐的缩小后尺寸和是否超过限制
  */
-export function clampToNAILimit(width: number, height: number): { width: number; height: number; clamped: boolean } {
+export function clampToNAILimit(width: number, height: number, maxPixels: number = 3211264): { width: number; height: number; clamped: boolean; recommendedWidth?: number; recommendedHeight?: number } {
   const pixels = width * height
-  if (pixels < NAI_MAX_PIXELS) {
+  if (pixels < maxPixels) {
     return { width, height, clamped: false }
   }
 
   // 计算缩放比例，使得总像素数刚好低于限制
-  // 使用 NAI_MAX_PIXELS - 1 确保严格小于
-  const scale = Math.sqrt((NAI_MAX_PIXELS - 1) / pixels)
+  // 使用 maxPixels - 1 确保严格小于
+  const scale = Math.sqrt((maxPixels - 1) / pixels)
   let newWidth = alignTo64(Math.floor(width * scale / 64) * 64 || 64)
   let newHeight = alignTo64(Math.floor(height * scale / 64) * 64 || 64)
 
   // 再次检查，如果仍然超过（因为 alignTo64 可能向上取整），逐步减少
-  while (newWidth * newHeight >= NAI_MAX_PIXELS) {
+  while (newWidth * newHeight >= maxPixels) {
     // 减少较大的那一边
     if (newWidth >= newHeight) {
       newWidth -= 64
@@ -621,7 +615,7 @@ export function clampToNAILimit(width: number, height: number): { width: number;
     }
   }
 
-  return { width: newWidth, height: newHeight, clamped: true }
+  return { width, height, clamped: true, recommendedWidth: newWidth, recommendedHeight: newHeight }
 }
 
 /**
@@ -657,10 +651,7 @@ export async function darkenImage(imageData: ImageData, factor = 0.5, targetWidt
     alignedHeight = alignTo64(metadata.height)
   }
 
-  // 检查 NovelAI 最大像素限制并自动缩小
-  const clamped = clampToNAILimit(alignedWidth, alignedHeight)
-  alignedWidth = clamped.width
-  alignedHeight = clamped.height
+
 
   // 先resize到目标尺寸，再调暗
   const darkenedBuffer = await sharp.default(buffer)
@@ -681,7 +672,6 @@ export async function darkenImage(imageData: ImageData, factor = 0.5, targetWidt
     alignedWidth,
     alignedHeight,
     originalBuffer: alignedOriginal,
-    sizeClamped: clamped.clamped,
   } as any
 }
 
