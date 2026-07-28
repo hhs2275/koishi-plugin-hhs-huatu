@@ -455,8 +455,6 @@ export function modelSupportsCharacters(model: string): boolean {
   const supportedModels = [
     'nai-diffusion-4-curated-preview',
     'nai-diffusion-4-full',
-    'nai-diffusion-4-curated-inpainting',
-    'nai-diffusion-4-full-inpainting',
     'nai-diffusion-4-5-curated',
     'nai-diffusion-4-5-full',
   ]

@@ -142,6 +142,7 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
     { pattern: /-R\s+([\d.]+)/g, key: 'rescale' },
     { pattern: /-n\s+([\d.]+)/g, key: 'noise' },
     { pattern: /-N\s+([\d.]+)/g, key: 'strength' },
+    { pattern: /-v\s+([\d.]+)/g, key: 'skipCfgAboveSigma' },
     { pattern: /-H\s*/g, key: 'hiresFix', value: true },
     { pattern: /-S\s*/g, key: 'smea', value: true },
     { pattern: /-d\s*/g, key: 'smeaDyn', value: true },
@@ -546,6 +547,9 @@ export function apply(ctx: Context, config: Config) {
           parameters.add_original_image = false
           parameters.legacy = false
           parameters.cfg_rescale = options.rescale ?? session.resolve(config.rescale)
+          if (options.skipCfgAboveSigma !== undefined) {
+            parameters.skip_cfg_above_sigma = options.skipCfgAboveSigma
+          }
 
 
           const isNAI3 = model === 'nai-diffusion-3'
@@ -572,7 +576,7 @@ export function apply(ctx: Context, config: Config) {
             parameters.reference_image_multiple = [] // unknown
             parameters.reference_information_extracted_multiple = [] // unknown
             parameters.reference_strength_multiple = [] // unknown
-            parameters.skip_cfg_above_sigma = null // unknown
+            parameters.skip_cfg_above_sigma = options.skipCfgAboveSigma ?? null // unknown
             parameters.use_coords = false // unknown
             parameters.v4_prompt = {
               caption: {
@@ -769,7 +773,9 @@ export function apply(ctx: Context, config: Config) {
               action = 'infill'
               // 将模型名改为inpainting版本
               // NAI 的 V4 模型 inpainting 后缀是固定的
-              if (!model.endsWith('-inpainting')) {
+              if (model === 'nai-diffusion-4-curated-preview') {
+                inpaintModel = 'nai-diffusion-4-curated-inpainting'
+              } else if (!model.endsWith('-inpainting')) {
                 inpaintModel = `${model}-inpainting`
               } else {
                 inpaintModel = model
@@ -1237,6 +1243,7 @@ export function apply(ctx: Context, config: Config) {
     .option('rescale', '-R <rescale:number>')
     .option('noise', '-n <noise:number>', { hidden: thirdParty })
     .option('strength', '-N <strength:number>')
+    .option('skipCfgAboveSigma', '-v <skipCfgAboveSigma:number>')
     .option('hiresFix', '-H', { hidden: () => config.type !== 'sd-webui' })
     .option('hiresFixSteps', '<step>', { type: step, hidden: () => config.type !== 'sd-webui' })
     .option('smea', '-S', { hidden: () => config.model !== 'nai-v3' })
