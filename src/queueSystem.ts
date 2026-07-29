@@ -150,6 +150,7 @@ export class QueueSystem {
     if (this.taskQueue.length === 0) return
 
     // 按照 Token 池的空闲数量并行启动任务
+    let dispatchCount = 0
     while (this.taskQueue.length > 0) {
       const tokenIndex = this.acquireTokenIndex()
       if (tokenIndex == null) break
@@ -161,6 +162,11 @@ export class QueueSystem {
       const taskSession = task.session as any
       taskSession.runtime = taskSession.runtime || {}
       taskSession.runtime._forcedTokenIndex = tokenIndex
+
+      // 错开并发请求，避免 Docker 容器内同时建立多个 TLS 连接导致 ETIMEDOUT
+      if (dispatchCount++ > 0) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
 
       Promise.resolve().then(async () => {
         try {

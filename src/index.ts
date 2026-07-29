@@ -1067,7 +1067,7 @@ export function apply(ctx: Context, config: Config) {
           break
         } catch (err) {
           if (Quester.Error.is(err)) {
-            if (err.code && err.code !== 'ETIMEDOUT' && ++count < config.maxRetryCount) {
+            if (err.code && ++count < config.maxRetryCount) {
               continue
             }
           }
