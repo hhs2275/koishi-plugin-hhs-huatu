@@ -710,12 +710,7 @@ export function parseInput(session: Session, input: string, config: Config, over
     .replace(/）/g, ')')
     .replace(/《/g, '<')
     .replace(/》/g, '>')
-
-
-
-  input = input
     .replace(backslash, '\\')
-    .replace(/_/g, ' ')
 
   if (session.resolve(config.latinOnly) && /[^\s\w"'""''.,:|\\()\[\]{}<>-]/.test(input)) {
     return ['.latin-only']
@@ -778,8 +773,13 @@ export function parseInput(session: Session, input: string, config: Config, over
   // 处理正向提示词
   const positive = input.split(/,\s*/g).filter((word) => {
     // eslint-disable-next-line no-control-regex
+    const raw = word.trim()
     word = word.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
-    if (!word) return false
+    if (!word) {
+      // 纯符号/表情 tag（如 >_<、>.<、^_^）：没有字母数字的 token 按原样保留
+      if (raw && !/[a-z0-9]/i.test(raw)) return true
+      return false
+    }
     for (const { pattern, strict } of forbidden) {
       if (strict && word.split(/\W+/g).includes(pattern)) {
         return false
@@ -796,8 +796,13 @@ export function parseInput(session: Session, input: string, config: Config, over
   // 处理负向提示词
   const processedNegative = negative.filter((word) => {
     // eslint-disable-next-line no-control-regex
+    const raw = word.trim()
     word = word.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
-    if (!word) return false
+    if (!word) {
+      // 纯符号/表情 tag（如 >_<、>.<、^_^）：没有字母数字的 token 按原样保留
+      if (raw && !/[a-z0-9]/i.test(raw)) return true
+      return false
+    }
     for (const { pattern, strict } of forbidden) {
       if (strict && word.split(/\W+/g).includes(pattern)) {
         return false

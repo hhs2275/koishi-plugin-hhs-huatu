@@ -1014,3 +1014,26 @@ export async function processCharacterReferenceImage(imageData: ImageData): Prom
     height: targetHeight
   }
 }
+
+// ========== 消息元素安全提取 ==========
+
+/**
+ * 从输入文本中提取图片 URL，并移除 `<img>` 元素标记。
+ *
+ * 不使用 h.parse 解析整个字符串：h.parse 会把用户自由文本中的裸 `<`（如表情
+ * `>_<`、`>.<`）误当作标签起始，当文本后面再出现一个 `>`（比如 `<img .../>`
+ * 的收尾）时，会从 `<` 一直吞到那个 `>`，把中间的标签和图片全部解析成一个畸形
+ * 元素，导致后续 tag 与图片丢失。这里只匹配标准的 `<img>` 元素（img 是自闭合
+ * 元素，属性内不允许出现裸 `>`），其余文本原样保留。
+ */
+const IMG_TAG_PATTERN = /<img\b[^>]*?>/gi
+
+export function extractImages(input: string): { input: string; urls: string[] } {
+  const urls: string[] = []
+  const cleaned = input.replace(IMG_TAG_PATTERN, (tag) => {
+    const src = /src\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1]
+    if (src) urls.push(src)
+    return ''
+  })
+  return { input: cleaned, urls }
+}
