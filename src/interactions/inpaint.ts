@@ -5,6 +5,21 @@ import { ImageData } from '../types'
 import { clampToNAILimit, darkenImage, download, extractImages, extractMaskWithAntiArtifact, NetworkError } from '../utils'
 import { calculatePointsCost } from '../services/points'
 
+/**
+ * 等待用户发送一张图片，返回图片 URL。
+ * - 返回 URL：收到带图消息
+ * - 返回 ''：收到消息但没有图片（与超时区分，便于给出不同提示）
+ * - 返回 undefined：超时
+ */
+async function promptForImage(session: Session<'authority'>, timeout: number): Promise<string | undefined> {
+  const result = await session.prompt((s) => {
+    // 官方推荐方式：从元素树取图，attrs.src 已反转义
+    const [image] = h.select(s.elements ?? [], 'img')
+    return image?.attrs.src ?? ''
+  }, { timeout })
+  return result as string | undefined
+}
+
 export interface InpaintInteractionResult {
   input: string
   error?: string
@@ -21,27 +36,23 @@ export async function runInpaintInteraction(
       if (options.inpaint) {
         try {
           // 1. 提取输入中的图片URL，并从 input 中移除图片元素只保留提示词
-          //    （不使用 h.parse，避免 `>_<` 等裸 `<` 被误解析吞掉后续内容）
+          //    优先使用 action 阶段从 session.elements 提取的 URL（官方方式），字符串兜底
           let imgUrl: string
           const extracted = extractImages(input)
           input = extracted.input
-          imgUrl = extracted.urls[0]
+          imgUrl = options._imageUrls?.[0] || extracted.urls[0]
 
           // 2. 如果没有图片，提示用户发送并等待
           if (!imgUrl) {
             await session.send(session.text('commands.novelai.messages.inpaint-wait-image'))
-            const imageResponse = await session.prompt(60000)
-
-            if (!imageResponse) {
+            const imgSrc = await promptForImage(session, 60000)
+            if (imgSrc === undefined) {
               return { input, error: session.text('commands.novelai.messages.inpaint-timeout') }
             }
-
-            // 解析用户发送的图片
-            imgUrl = extractImages(imageResponse).urls[0]
-
-            if (!imgUrl) {
+            if (!imgSrc) {
               return { input, error: session.text('commands.novelai.messages.inpaint-no-mask') }
             }
+            imgUrl = imgSrc
           }
 
           // 2. 下载原图（带重试：如果下载失败，提示用户重新发送参考图）
@@ -51,11 +62,10 @@ export async function runInpaintInteraction(
           } catch (err) {
             ctx.logger.warn(`[Inpaint] 参考图下载失败: ${err}`)
             await session.send(session.text('commands.novelai.messages.inpaint-image-download-failed'))
-            const retryResponse = await session.prompt(60000)
-            if (!retryResponse) {
+            const retryUrl = await promptForImage(session, 60000)
+            if (retryUrl === undefined) {
               return { input, error: session.text('commands.novelai.messages.inpaint-timeout') }
             }
-            const retryUrl = extractImages(retryResponse).urls[0]
             if (!retryUrl) {
               return { input, error: session.text('commands.novelai.messages.inpaint-no-mask') }
             }
@@ -100,17 +110,16 @@ export async function runInpaintInteraction(
 
           // 6. 等待用户发送涂白的图片（在队列外等待，不占用资源）
           // ⚠️ 此时函数暂停执行，darkenResult 被闭包保留
-          const maskImgUrl = await session.prompt(120000)
-          if (!maskImgUrl) {
+          const maskSrc = await promptForImage(session, 120000)
+          if (maskSrc === undefined) {
             return { input, error: session.text('commands.novelai.messages.inpaint-timeout') }
           }
 
-          // 7. 解析用户发送的图片
-          let maskUrl = extractImages(maskImgUrl).urls[0]
-
-          if (!maskUrl) {
+          // 7. 确认蒙版图片
+          if (!maskSrc) {
             return { input, error: session.text('commands.novelai.messages.inpaint-no-mask') }
           }
+          let maskUrl = maskSrc
 
           // 8. 下载用户涂白的图片（带重试：如果蒙版图下载失败，提示用户重新发送）
           let maskImageData: ImageData
@@ -119,11 +128,10 @@ export async function runInpaintInteraction(
           } catch (err) {
             ctx.logger.warn(`[Inpaint] 蒙版图下载失败: ${err}`)
             await session.send(session.text('commands.novelai.messages.inpaint-mask-download-failed'))
-            const retryMaskResponse = await session.prompt(120000)
-            if (!retryMaskResponse) {
+            const retryMaskUrl = await promptForImage(session, 120000)
+            if (retryMaskUrl === undefined) {
               return { input, error: session.text('commands.novelai.messages.inpaint-timeout') }
             }
-            const retryMaskUrl = extractImages(retryMaskResponse).urls[0]
             if (!retryMaskUrl) {
               return { input, error: session.text('commands.novelai.messages.inpaint-no-mask') }
             }

@@ -51,13 +51,18 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
 
     let imgUrl: string, image: ImageData
     if (haveInput) {
-      // 提取图片并移除 img 元素标记（不使用 h.parse，避免 `>_<` 等裸 `<` 被误解析吞掉后续 tag 和图片）
+      // 文本清理：移除 img 元素标记，保留纯文本 prompt
       const extracted = extractImages(input)
       input = extracted.input
-      if (extracted.urls.length) {
+
+      // 图片 URL 优先级：
+      // 1. action 阶段从 session.elements 提取的 URL（官方方式，直接指令场景，attrs.src 已反转义）
+      // 2. 字符串兜底（重画等复用旧 input 的场景）
+      const urls = options._imageUrls?.length ? options._imageUrls : extracted.urls
+      if (urls.length) {
         if (!allowImage) throw new SessionError('commands.novelai.messages.invalid-content')
-        if (extracted.urls.length > 1) throw new SessionError('commands.novelai.messages.too-many-images')
-        imgUrl = extracted.urls[0]
+        if (urls.length > 1) throw new SessionError('commands.novelai.messages.too-many-images')
+        imgUrl = urls[0]
       }
 
       if (options.enhance && !imgUrl) {
