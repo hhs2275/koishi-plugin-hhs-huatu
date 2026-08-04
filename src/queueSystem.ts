@@ -48,7 +48,7 @@ export class QueueSystem {
   // 上一次任务派发的时间戳，用于错开并发请求
   private lastDispatchTime = 0
   // 相邻两次派发之间的最小间隔（毫秒）
-  private static readonly DISPATCH_INTERVAL_MS = 20000
+  private static readonly DISPATCH_INTERVAL_MS = 200
 
   constructor(
     private ctx: Context,

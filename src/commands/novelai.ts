@@ -70,6 +70,17 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
 
 export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) {
   const { membershipSystem, queueSystem, useFilter, useBackend, thirdParty, noImage, some, step, resolution } = runtime
+
+  // nai4-5 / nai4-5c 别名只认 ASCII 连字符（-），但用户可能输入其他 Unicode 横杠
+  // （如 U+2011 ‑、U+2013 –、U+FF0D － 等）。这里在命令解析前把指令首词中的横杠归一化，
+  // 使这些变体也能命中别名，同时保持原有的指令触发语义（群聊无前缀/@ 依然不会触发）。
+  ctx.before('attach', (session) => {
+    session.stripped.content = session.stripped.content.replace(
+      /^(\S*?nai4)[\u2010-\u2015\u2212\uFE63\uFF0D](5c?)(?=\s|$)/i,
+      '$1-$2',
+    )
+  })
+
   const cmd = ctx.command('novelai [prompts...]')
     .alias('nai')
     .alias('imagine')
