@@ -52,6 +52,8 @@ nai4 -M <提示词> <图片>
 - ✅ nai-diffusion-4-full (`nai4`)
 - ✅ nai-diffusion-4-5-curated (`nai4-5c`)
 - ✅ nai-diffusion-4-5-full (`nai4-5`)
+- ✅ nai-diffusion-5-curated (`nai-v5-curated`)
+- ✅ nai-diffusion-5-full (`nai-v5-full`)
 
 **使用方法：**
 ```bash

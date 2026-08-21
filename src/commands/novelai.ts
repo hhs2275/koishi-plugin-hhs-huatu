@@ -292,7 +292,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
         case 'stable-horde':
           return sampler.horde
         default:
-          return { ...sampler.nai, ...sampler.nai3 }
+          return { ...sampler.nai, ...sampler.nai3, ...sampler.nai4 }
       }
     }
 
