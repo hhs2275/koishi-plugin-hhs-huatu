@@ -70,13 +70,26 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
 
 export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) {
   const { membershipSystem, queueSystem, useFilter, useBackend, thirdParty, noImage, some, step, resolution } = runtime
+
+  // nai4-5 / nai4-5c 别名只认 ASCII 连字符（-），但用户可能输入其他 Unicode 横杠
+  // （如 U+2011 ‑、U+2013 –、U+FF0D － 等）。这里在命令解析前把指令首词中的横杠归一化，
+  // 使这些变体也能命中别名，同时保持原有的指令触发语义（群聊无前缀/@ 依然不会触发）。
+  ctx.before('attach', (session) => {
+    session.stripped.content = session.stripped.content.replace(
+      /^(\S*?nai4)[\u2010-\u2015\u2212\uFE63\uFF0D](5c?)(?=\s|$)/i,
+      '$1-$2',
+    )
+  })
+
   const cmd = ctx.command('novelai [prompts...]')
     .alias('nai')
     .alias('imagine')
-    .alias('nai4', { options: { model: 'nai-v4-full', sampler: 'k_euler_a', iterations: 1, batch: 1 } })
-    .alias('nai4c', { options: { model: 'nai-v4-curated-preview', sampler: 'k_euler_a', iterations: 1, batch: 1 } })
-    .alias('nai4-5c', { options: { model: 'nai-v4-5-curated', sampler: 'k_euler_a', iterations: 1, batch: 1 } })
-    .alias('nai4-5', { options: { model: 'nai-v4-5-full', sampler: 'k_euler_a', iterations: 1, batch: 1 } })
+    .alias('nai4', { options: { model: 'nai-v4-full' } })
+    .alias('nai4c', { options: { model: 'nai-v4-curated-preview'} })
+    .alias('nai4-5c', { options: { model: 'nai-v4-5-curated'} })
+    .alias('nai4-5', { options: { model: 'nai-v4-5-full' } })
+    .alias('nai5c', { options: { model: 'nai-v5-curated'} })
+    .alias('nai5', { options: { model: 'nai-v5-full' } })
     .userFields(['authority'])
     .shortcut('imagine', { i18n: true, fuzzy: true })
     .shortcut('enhance', { i18n: true, fuzzy: true, options: { enhance: true } })
@@ -120,6 +133,13 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .action(async ({ session, options, name }, ...prompts) => {
       // 将 prompts 数组转换为字符串
       let input = prompts.join(' ')
+
+      // 从元素树提取图片 URL（官方推荐方式，attrs.src 已反转义），
+      // 供 generateImage / inpaint 等后续流程使用，并随 options 保存供重画复用
+      const imageUrls = h.select(session.elements ?? [], 'img').map(el => el.attrs.src)
+      if (imageUrls.length) {
+        ; (options as any)._imageUrls = imageUrls
+      }
 
       // 处理可能被错误包含在 undesired 中的其他选项
       if (options.undesired) {
@@ -315,8 +335,10 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .option('upscaleFirst', '-f', { fallback: false })
     .action(async ({ session, options }, input) => {
       let imgUrl: string
-      const extracted = extractImages(input || '')
-      imgUrl = extracted.urls[0]
+      // 官方方式：从元素树取图（attrs.src 已反转义）；文本中手写的 <img> 标记作兜底
+      const [imageElement] = h.select(session.elements ?? [], 'img')
+      imgUrl = imageElement?.attrs.src
+      if (!imgUrl) imgUrl = extractImages(input || '').urls[0]
 
       if (!imgUrl) return session.text('commands.novelai.messages.expect-image')
       let image: ImageData

@@ -1,8 +1,8 @@
 // 精准参考（Precise Reference）多步交互流程：收集参考图 -> 处理图片 -> 等待用户确认
-import { Session } from 'koishi'
+import { h, Session } from 'koishi'
 import { modelMap } from '../config'
 import { Runtime } from '../runtime'
-import { download, extractImages, modelSupportsCharacterReference, NetworkError, processCharacterReferenceImage } from '../utils'
+import { download, modelSupportsCharacterReference, NetworkError, processCharacterReferenceImage } from '../utils'
 
 export async function runPreciseRefInteraction(
   runtime: Runtime,
@@ -26,15 +26,23 @@ export async function runPreciseRefInteraction(
           await session.send(session.text('commands.novelai.messages.preciseref-wait-image') || '请输入精准参考图片。支持一次发送多张或分段发送，您可以发送"开始"结束收集，最多6张。')
 
           while (collectedImages.length + failedCount < maxLimit) {
-            const imageResponse = await session.prompt(60000)
+            // 官方推荐方式：通过 prompt 回调拿元素树，一次取到文本（开始/取消）和图片 URL
+            const reply = await session.prompt((s) => {
+              const elements = s.elements ?? []
+              const text = elements
+                .filter(el => el.type === 'text')
+                .map(el => el.attrs.content)
+                .join('')
+                .trim()
+              const urls = h.select(elements, 'img').map(el => el.attrs.src)
+              return { text, urls }
+            }, { timeout: 60000 })
 
-            if (!imageResponse) {
+            if (!reply) {
               return session.text('commands.novelai.messages.charref-timeout') || '接收超时，精准参考已取消。'
             }
 
-            // 使用安全的 img 提取方式，避免用户文本中的裸 `<`（如 `>_<`）被 h.parse 误解析
-            const extracted = extractImages(imageResponse)
-            const contentText = extracted.input.trim()
+            const contentText = reply.text
 
             if (contentText === '取消' || contentText.toLowerCase() === 'cancel') {
               return '已取消精准参考任务。'
@@ -47,7 +55,7 @@ export async function runPreciseRefInteraction(
               break
             }
 
-            const urls = extracted.urls
+            const urls = reply.urls
 
             if (urls.length === 0) continue
 

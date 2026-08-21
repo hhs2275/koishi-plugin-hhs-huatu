@@ -43,13 +43,6 @@ export class QueueSystem {
   // Token管理相关
   private tokenPool: boolean[] = []
 
-  // 派发锁：防止 processQueue 重入，导致错峰延时被任务完成时的再次调用绕过
-  private processQueueLock = false
-  // 上一次任务派发的时间戳，用于错开并发请求
-  private lastDispatchTime = 0
-  // 相邻两次派发之间的最小间隔（毫秒）
-  private static readonly DISPATCH_INTERVAL_MS = 20000
-
   constructor(
     private ctx: Context,
     private config: Config,
@@ -156,50 +149,33 @@ export class QueueSystem {
   async processQueue() {
     if (this.taskQueue.length === 0) return
 
-    // 防止重入：一次只允许一个派发循环运行，
-    // 否则任务完成时再次调用 processQueue 会把错峰延时绕过
-    if (this.processQueueLock) return
+    // 按照 Token 池的空闲数量并行启动任务
+    let dispatchCount = 0
+    while (this.taskQueue.length > 0) {
+      const tokenIndex = this.acquireTokenIndex()
+      if (tokenIndex == null) break
 
-    this.processQueueLock = true
-    try {
-      // 按照 Token 池的空闲数量并行启动任务
-      while (this.taskQueue.length > 0) {
-        const tokenIndex = this.acquireTokenIndex()
-        if (tokenIndex == null) break
+      const task = this.taskQueue.shift()!
+      this.processingTasks++
 
-        const task = this.taskQueue.shift()!
-        this.processingTasks++
+      // 将分配的 token 索引写入 session.runtime，供 getToken() 使用
+      const taskSession = task.session as any
+      taskSession.runtime = taskSession.runtime || {}
+      taskSession.runtime._forcedTokenIndex = tokenIndex
 
-        // 将分配的 token 索引写入 session.runtime，供 getToken() 使用
-        const taskSession = task.session as any
-        taskSession.runtime = taskSession.runtime || {}
-        taskSession.runtime._forcedTokenIndex = tokenIndex
-
-        // 错开并发请求：任意两次任务派发之间至少间隔 200ms，
-        // 避免 Docker 容器内同时建立多个 TLS 连接导致 ETIMEDOUT。
-        // 只有间隔不足 200ms 的请求（即"同时涌入"的请求）才会等待
-        const elapsed = Date.now() - this.lastDispatchTime
-        if (this.lastDispatchTime > 0 && elapsed < QueueSystem.DISPATCH_INTERVAL_MS) {
-          await new Promise(resolve => setTimeout(resolve, QueueSystem.DISPATCH_INTERVAL_MS - elapsed))
+      Promise.resolve().then(async () => {
+        try {
+          const result = await this.generateImageFn(task.session, task.options, task.input)
+          task.resolve(result)
+        } catch (err) {
+          task.reject(err)
+        } finally {
+          this.processingTasks--
+          this.releaseTokenIndex(tokenIndex)
+          // 每完成一个任务，继续处理队列中的后续任务
+          this.processQueue()
         }
-        this.lastDispatchTime = Date.now()
-
-        Promise.resolve().then(async () => {
-          try {
-            const result = await this.generateImageFn(task.session, task.options, task.input)
-            task.resolve(result)
-          } catch (err) {
-            task.reject(err)
-          } finally {
-            this.processingTasks--
-            this.releaseTokenIndex(tokenIndex)
-            // 每完成一个任务，继续处理队列中的后续任务
-            this.processQueue()
-          }
-        })
-      }
-    } finally {
-      this.processQueueLock = false
+      })
     }
   }
 

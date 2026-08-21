@@ -21,7 +21,7 @@ export const usage = `
 ### ✨ 核心亮点
 新版本改用数据库。你的会员数据在 你的 Koishi 根目录/data/hhs-huatu-user-data.json。把它放在hhs-huatu-import文件夹下面，然后发“会员调试--import”指令，就可以把数据导入数据库。
 
-本插件针对 **NovelAI V4 & V4.5** 模型进行了深度适配，预设快捷指令，助你快速切换模型：
+本插件针对 **NovelAI V4 / V4.5 / V5** 模型进行了深度适配，预设快捷指令，助你快速切换模型：
 
 | 指令 | 对应模型 (Model) | 说明 |
 | :--- | :--- | :--- |
@@ -29,6 +29,8 @@ export const usage = `
 | \`nai4c\` | \`nai-diffusion-4-curated\` | V4 精选模型 |
 | \`nai4-5\` | \`nai-diffusion-4-5-full\` | V4.5 全量模型 |
 | \`nai4-5c\` | \`nai-diffusion-4-5-curated\` | V4.5 精选模型 |
+| \`nai5\` | \`nai-diffusion-5-full\` | V5 全量模型 |
+| \`nai5c\` | \`nai-diffusion-5-curated\` | V5 精选模型 |
 
 ### 🛠️ 功能列表
 

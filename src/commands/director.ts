@@ -92,17 +92,16 @@ NovelAI Director Tools 图像处理工具
           return '❌ 背景移除功能未启用\n\n该功能消耗较多 Anlas，需要管理员在配置中启用\n配置项：directorToolsBgRemovalEnabled: true'
         }
 
-        // 2. 提取图片并清理 prompt 中的图片标签（不使用 h.parse，避免 `>_<` 等裸 `<` 被误解析）
+        // 2. 提取图片并清理 prompt 中的图片标签
+        //    官方推荐方式：从元素树取图（attrs.src 已反转义），文本用 toString(true) 只保留纯文本
         let imgUrl: string
-        const inputContent = session.content || ''
-
-        // 提取图片并移除 img 元素
-        const extracted = extractImages(inputContent)
-        imgUrl = extracted.urls[0]
-        const cleanedInput = extracted.input
+        const messageElements = session.elements ?? []
+        imgUrl = h.select(messageElements, 'img')[0]?.attrs.src
+        const cleanedInput = h('', messageElements).toString(true).trim()
 
         // 如果消息中没有图片，尝试从引用消息中提取
         if (!imgUrl && session.quote) {
+          // quote 只有序列化字符串，没有元素树，使用字符串兜底
           imgUrl = extractImages(session.quote.content || '').urls[0]
 
           if (config.debugLog && imgUrl) {
@@ -117,21 +116,22 @@ NovelAI Director Tools 图像处理工具
           const promptMsg = await session.send('请60s内发送图片')
 
           try {
-            // 等待用户发送图片，超时时间 60 秒
-            const userInput = await session.prompt(60000)
+            // 等待用户发送图片，超时时间 60 秒（回调方式：从元素树取图，区分超时/没图）
+            const imgSrc = await session.prompt((s) => {
+              const [image] = h.select(s.elements ?? [], 'img')
+              return image?.attrs.src ?? ''
+            }, { timeout: 60000 })
 
-            if (!userInput) {
+            if (imgSrc === undefined) {
               ctx.logger.warn('[Director Tools] 用户超时未发送图片')
               return '⏱️ 超时未收到图片，操作已取消'
             }
 
-            // 从用户发送的消息中提取图片
-            imgUrl = extractImages(userInput).urls[0]
-
-            if (!imgUrl) {
+            if (!imgSrc) {
               ctx.logger.warn('[Director Tools] 用户发送的消息中没有图片')
               return '❌ 未检测到图片，操作已取消\n\n请确保发送的是图片消息'
             }
+            imgUrl = imgSrc
 
             if (config.debugLog) {
               ctx.logger.info(`[Director Tools] 从用户发送的消息中提取到图片`)

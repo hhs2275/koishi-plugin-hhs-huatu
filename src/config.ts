@@ -713,19 +713,6 @@ export function parseInput(session: Session, input: string, config: Config, over
     ]
   }
 
-  input = input
-    .replace(/\\\\/g, backslash.source)
-    .replace(/，/g, ',')
-    .replace(/（/g, '(')
-    .replace(/）/g, ')')
-    .replace(/《/g, '<')
-    .replace(/》/g, '>')
-    .replace(backslash, '\\')
-
-  if (session.resolve(config.latinOnly) && /[^\s\w"'""''.,:|\\()\[\]{}<>-]/.test(input)) {
-    return ['.latin-only']
-  }
-
   const negative = []
   const placement = session.resolve(config.placement)
   const appendToList = (words: string[], input = '', isNegative = false) => {
@@ -761,11 +748,12 @@ export function parseInput(session: Session, input: string, config: Config, over
     }
   }
 
-  // extract negative prompts from input text
-  const capture = input.match(/(,\s*|\s+)(-u\s+|--undesired\s+|negative prompts?:\s*)([\s\S]+)/m)
+  // 提取负向提示词（-O 模式下不做全角转半角，因此分隔符同时兼容全角/半角逗号）
+  let negativeInput = ''
+  const capture = input.match(/([\s,，]+)(-u\s+|--undesired\s+|negative prompts?:\s*)([\s\S]+)/m)
   if (capture?.[3]) {
     input = input.slice(0, capture.index).trim()
-    appendToList(negative, capture[3], true)
+    negativeInput = capture[3].trim()
   }
 
   // also handle negative prompts from options.undesired
@@ -773,70 +761,105 @@ export function parseInput(session: Session, input: string, config: Config, over
     // 清理 undesired 参数，移除可能被错误包含的其他选项
     const cleanedUndesired = cleanUndesiredParameter(undesired)
     if (cleanedUndesired) {
-      appendToList(negative, cleanedUndesired, true)
+      negativeInput = negativeInput ? `${negativeInput}, ${cleanedUndesired}` : cleanedUndesired
     }
   }
 
   // remove forbidden words
   const forbidden = parseForbidden(session.resolve(config.forbidden))
 
-  // 处理正向提示词
-  const positive = input.split(/,\s*/g).filter((word) => {
-    // eslint-disable-next-line no-control-regex
-    const raw = word.trim()
-    word = word.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
-    if (!word) {
-      // 纯符号/表情 tag（如 >_<、>.<、^_^）：没有字母数字的 token 按原样保留
-      if (raw && !/[a-z0-9]/i.test(raw)) return true
-      return false
+  // ========== -O（override）模式：tag 完全原样，仅保留禁词过滤 ==========
+  if (override) {
+    if (negativeInput) appendToList(negative, negativeInput, true)
+
+    // 禁词过滤仍生效：按逗号切分检查，命中禁词的 tag 移除，其余内容（含符号）原样保留
+    const segments = input.split(/(,\s*)/g)
+    const kept: string[] = []
+    for (let i = 0; i < segments.length; i += 2) {
+      const tag = segments[i]
+      const sep = segments[i + 1] ?? ''
+      if (!tag && !sep) continue
+      // eslint-disable-next-line no-control-regex
+      const cleaned = tag.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
+      const hit = forbidden.some(({ pattern, strict }) =>
+        strict ? cleaned.split(/\W+/g).includes(pattern) : cleaned.includes(pattern)
+      )
+      if (!hit) kept.push(tag, sep)
     }
-    for (const { pattern, strict } of forbidden) {
-      if (strict && word.split(/\W+/g).includes(pattern)) {
-        return false
-      } else if (!strict && word.includes(pattern)) {
-        return false
-      }
-    }
-    return true
-  }).map((word) => {
-    if (/^<.+>$/.test(word)) return word.replace(/ /g, '_')
-    return config.lowerCase ? word.toLowerCase() : word
-  })
+    input = kept.join('').trim()
+
+    // 负向 prompt 同样做禁词过滤（其余处理与默认模式一致）
+    const processedNegative = filterTags(negative, forbidden, config.lowerCase)
+    return [null, input, processedNegative.join(', ')]
+  }
+
+  // ========== 默认模式：全角转半角 + 轻量清洗 ==========
+  input = input
+    .replace(/\\\\/g, backslash.source)
+    .replace(/，/g, ',')
+    .replace(/（/g, '(')
+    .replace(/）/g, ')')
+    .replace(/《/g, '<')
+    .replace(/》/g, '>')
+    .replace(backslash, '\\')
+
+  // 负向提示词同样做全角转半角（与改造前的行为保持一致）
+  if (negativeInput) {
+    negativeInput = negativeInput
+      .replace(/\\\\/g, backslash.source)
+      .replace(/，/g, ',')
+      .replace(/（/g, '(')
+      .replace(/）/g, ')')
+      .replace(/《/g, '<')
+      .replace(/》/g, '>')
+      .replace(backslash, '\\')
+    appendToList(negative, negativeInput, true)
+  }
+
+  if (session.resolve(config.latinOnly) && /[^\s\w"'""''.,:|\\()\[\]{}<>-]/.test(input)) {
+    return ['.latin-only']
+  }
+
+  // 处理正向提示词：不再改写 tag（去掉 <...> 空格转下划线），仅按配置转小写
+  const positive = filterTags(input.split(/,\s*/g), forbidden, config.lowerCase)
 
   // 处理负向提示词
-  const processedNegative = negative.filter((word) => {
-    // eslint-disable-next-line no-control-regex
-    const raw = word.trim()
-    word = word.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
-    if (!word) {
-      // 纯符号/表情 tag（如 >_<、>.<、^_^）：没有字母数字的 token 按原样保留
-      if (raw && !/[a-z0-9]/i.test(raw)) return true
-      return false
-    }
-    for (const { pattern, strict } of forbidden) {
-      if (strict && word.split(/\W+/g).includes(pattern)) {
-        return false
-      } else if (!strict && word.includes(pattern)) {
-        return false
-      }
-    }
-    return true
-  }).map((word) => {
-    if (/^<.+>$/.test(word)) return word.replace(/ /g, '_')
-    return config.lowerCase ? word.toLowerCase() : word
-  })
+  const processedNegative = filterTags(negative, forbidden, config.lowerCase)
 
   if (Math.max(getWordCount(positive), getWordCount(processedNegative)) > (session.resolve(config.maxWords) || Infinity)) {
     return ['.too-many-words']
   }
 
-  if (!override) {
-    appendToList(positive, session.resolve(config.basePrompt), false)
-    appendToList(processedNegative, session.resolve(config.negativePrompt), true)
-    if (config.defaultPromptSw) appendToList(positive, session.resolve(config.defaultPrompt), false)
-  }
+  appendToList(positive, session.resolve(config.basePrompt), false)
+  appendToList(processedNegative, session.resolve(config.negativePrompt), true)
+  if (config.defaultPromptSw) appendToList(positive, session.resolve(config.defaultPrompt), false)
 
   return [null, positive.join(', '), processedNegative.join(', ')]
+}
+
+/**
+ * tag 过滤：只做「空段丢弃 / 禁词过滤」，不再因格式问题丢弃或改写 tag。
+ * 净化副本（小写、ASCII 符号转空格）仅用于空段判断与禁词匹配，输出保留原始 tag（可选小写）。
+ */
+function filterTags(words: string[], forbidden: Forbidden[], lowerCase: boolean): string[] {
+  return words.filter((word) => {
+    // eslint-disable-next-line no-control-regex
+    const raw = word.trim()
+    word = word.toLowerCase().replace(/[\x00-\x7f]/g, s => s.replace(/[^0-9a-zA-Z]/, ' ')).replace(/\s+/, ' ').trim()
+    if (!word) {
+      // 纯符号/表情 tag（如 >_<、>.<、^_^）：没有字母数字的 token 按原样保留
+      if (raw && !/[a-z0-9]/i.test(raw)) return true
+      return false
+    }
+    for (const { pattern, strict } of forbidden) {
+      if (strict && word.split(/\W+/g).includes(pattern)) {
+        return false
+      } else if (!strict && word.includes(pattern)) {
+        return false
+      }
+    }
+    return true
+  }).map((word) => lowerCase ? word.toLowerCase() : word)
 }
 
 function getWordCount(words: string[]) {

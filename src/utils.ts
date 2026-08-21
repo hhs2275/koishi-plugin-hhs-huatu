@@ -1,4 +1,4 @@
-import { arrayBufferToBase64, Context, Dict, pick, Quester } from 'koishi'
+import { arrayBufferToBase64, Context, Dict, h, pick, Quester } from 'koishi'
 import {
   crypto_generichash, crypto_pwhash,
   crypto_pwhash_ALG_ARGON2ID13, crypto_pwhash_SALTBYTES, ready,
@@ -1034,7 +1034,8 @@ export function extractImages(input: string): { input: string; urls: string[] } 
   const urls: string[] = []
   const cleaned = input.replace(IMG_TAG_PATTERN, (tag) => {
     const src = /src\s*=\s*["']([^"']+)["']/i.exec(tag)?.[1]
-    if (src) urls.push(src)
+    // 序列化后的属性值里 & 会被转义成 &amp;，需要反转义才能得到真实 URL
+    if (src) urls.push(h.unescape(src))
     return ''
   })
   return { input: cleaned, urls }
