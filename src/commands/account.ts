@@ -118,7 +118,8 @@ export function registerAccount(ctx: Context, config: Config, runtime: Runtime) 
     })
 
   // ========== Opus 免费额度查询命令 ==========
-  ctx.command('配额', '查询 NovelAI Opus 免费生成额度', { authority: 4 })
+  // 额度查询只返回百分比和恢复时间，不暴露 Token / Anlas 账户详情，允许群聊普通用户查询。
+  ctx.command('配额', '查询 NovelAI Opus 免费生成额度', { authority: 0 })
     .alias('opus配额')
     .usage('查询 NovelAI Opus 免费 V5 生图额度、下次恢复时间和当前状态。')
     .action(async ({ session }) => {
