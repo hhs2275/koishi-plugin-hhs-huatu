@@ -8,6 +8,7 @@ import { resolve } from 'path'
 import { readFile } from 'fs/promises'
 import { auditImage, AuditResult } from '../imageAudit'
 import { handleError, Runtime } from '../runtime'
+import { fetchSubscription, isNovelAIV5Model, isOpusQuotaExhausted } from './opusQuota'
 
 export async function generateImage(runtime: Runtime, session: Session<'authority'>, options: any, input: string) {
     // 添加调试日志，检查session对象
@@ -114,6 +115,39 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
     }
 
     const model = modelMap[options.model]
+
+    // Opus 免费额度耗尽时默认保护 Anlas，不允许 V5 请求继续提交。
+    // 开启 opusQuotaAllowAnlas 后跳过此保护，由 NovelAI 按实际规则扣除 Anlas。
+    if (['token', 'login'].includes(runtime.config.type) &&
+      isNovelAIV5Model(model) &&
+      !runtime.config.opusQuotaAllowAnlas) {
+      const rejectV5ByQuota = async (message: string) => {
+        // novelai 命令会在入队前预扣插件点数；额度熔断属于入队后的检查，必须退款。
+        const deductedPoints = (options as any)?._deductedPoints || 0
+        if (deductedPoints > 0 && runtime.config.pointsEnabled) {
+          await runtime.membershipSystem.refundPoints(session.userId, deductedPoints)
+          ; (options as any)._deductedPoints = 0
+        }
+        return session.text(message)
+      }
+
+      try {
+        const subscription = await fetchSubscription(runtime.ctx, runtime.config, token)
+        if (subscription.tier === 3) {
+          if (!subscription.active || !subscription.usage || typeof subscription.usage.percent !== 'number') {
+            runtime.ctx.logger.warn('无法确认 Opus 免费额度，已阻止 V5 生图以保护 Anlas')
+            return rejectV5ByQuota('commands.novelai.messages.opus-quota-check-failed')
+          }
+          if (isOpusQuotaExhausted(subscription)) {
+            return rejectV5ByQuota('commands.novelai.messages.opus-quota-exhausted')
+          }
+        }
+      } catch (err) {
+        runtime.ctx.logger.warn(`查询 Opus 免费额度失败，已阻止 V5 生图: ${err?.message || err}`)
+        return rejectV5ByQuota('commands.novelai.messages.opus-quota-check-failed')
+      }
+    }
+
     const seed = options.seed || Math.floor(Math.random() * Math.pow(2, 32))
 
     const parameters: Dict = {
