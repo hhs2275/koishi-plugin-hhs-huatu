@@ -29,6 +29,15 @@ export interface TrainingStepsLeft {
   purchasedTrainingSteps: number
 }
 
+export interface UsageLimit {
+  /** 免费生成额度剩余百分比。 */
+  percent?: number
+  /** 距离下一个 1% 恢复的秒数。 */
+  timeUntilNextPercent?: number
+  /** 为 true 时表示额度不可用。 */
+  isNegative?: boolean
+}
+
 export interface Subscription {
   tier: number
   active: boolean
@@ -36,6 +45,7 @@ export interface Subscription {
   perks: Perks
   paymentProcessorData: PaymentProcessorData
   trainingStepsLeft: TrainingStepsLeft
+  usage?: UsageLimit
 }
 
 export interface ImageData {

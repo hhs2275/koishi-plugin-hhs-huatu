@@ -306,6 +306,8 @@ export interface Config extends PromptConfig, ParamConfig {
   pointsRefreshCycleDays?: number
   pointsRefreshAmount?: number
   pointsRefreshIncludeNonMember?: boolean
+  // NovelAI Opus 免费额度配置
+  opusQuotaAllowAnlas?: boolean
   // 图片审核配置
   imageReviewEnabled?: boolean
   imageReviewFailAction?: 'block' | 'ignore'
@@ -609,6 +611,12 @@ export const Config = Schema.intersect([
     pointsRefreshAmount: Schema.number().description('每次刷新恢复的点数').default(200),
     pointsRefreshIncludeNonMember: Schema.boolean().description('刷新范围是否包括非会员').default(false),
   }).description('点数控制设置'),
+
+  Schema.object({
+    opusQuotaAllowAnlas: Schema.boolean()
+      .description('Opus 免费额度耗尽后，是否允许消耗 NovelAI Anlas 继续使用 V5 生图。关闭后将阻止 nai5/nai5c，直到额度恢复。')
+      .default(false),
+  }).description('NovelAI Opus 额度控制'),
 
   Schema.object({
     imageReviewEnabled: Schema.boolean().description('是否启用图片审核').default(false),
