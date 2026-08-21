@@ -84,6 +84,7 @@ commands:
       unauthorized: 令牌未授权，可能需要续费，请联系管理员。
       opus-quota-exhausted: Opus 免费额度已耗尽，已停止 nai5/nai5c 生图。请等待额度恢复、切换模型，或在配置中打开“Opus额度耗尽后允许消耗 Anlas”开关。
       opus-quota-check-failed: 无法确认 Opus 免费额度，为保护 Anlas 已停止 V5 生图。请稍后重试，或检查 NovelAI API 配置。
+      nai5-member-only: nai5 / nai5c 会消耗 NovelAI 配额，仅限会员使用。请充值会员，或切换到其他模型。
       daily-limit-reached: 您今日的使用次数已达上限({0}次)，请充值会员或者明天再来。
       member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
       membership-expired: 您的会员已过期，已恢复为普通用户权限。
@@ -196,6 +197,7 @@ commands:
       invalid-token: 令牌无效或已过期，请联系管理员。
       all-tokens-invalid: 所有令牌均无效或已过期，请联系管理员更新令牌。
       unauthorized: 令牌未授权，可能需要续费，请联系管理员。
+      nai5-member-only: nai5 / nai5c 会消耗 NovelAI 配额，仅限会员使用。请充值会员，或切换到其他模型。
       daily-limit-reached: 您今日的使用次数已达上限({0}次)，请充值会员或者明天再来。
       member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
       membership-expired: 您的会员已过期，已恢复为普通用户权限。

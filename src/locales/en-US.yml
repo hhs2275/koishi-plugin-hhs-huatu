@@ -83,6 +83,7 @@ commands:
       unauthorized: Token not authorized, subscription may need renewal. Please contact the administrator.
       opus-quota-exhausted: Opus free quota is exhausted. nai5/nai5c generation has been stopped. Wait for the quota to refill, switch models, or enable the Anlas fallback option in the configuration.
       opus-quota-check-failed: Unable to confirm the Opus free quota. V5 generation was stopped to protect Anlas. Please try again later or check the NovelAI API configuration.
+      nai5-member-only: nai5 / nai5c consumes NovelAI quota and is members-only. Please become a member, or switch to another model.
       daily-limit-reached: Your daily limit ({0} times) has been reached. Please become a member or come back tomorrow.
       member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
       membership-expired: Your membership has expired, you have been reverted to normal user privileges.
@@ -190,6 +191,7 @@ commands:
       invalid-token: Token invalid or expired, please contact the administrator.
       all-tokens-invalid: All tokens are invalid or expired, please contact the administrator to update tokens.
       unauthorized: Token not authorized, subscription may need renewal. Please contact the administrator.
+      nai5-member-only: nai5 / nai5c consumes NovelAI quota and is members-only. Please become a member, or switch to another model.
       daily-limit-reached: Your daily limit ({0} times) has been reached. Please become a member or come back tomorrow.
       member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
       membership-expired: Your membership has expired, you have been reverted to normal user privileges.

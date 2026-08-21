@@ -1,8 +1,9 @@
 import { Context, Dict, Session } from 'koishi'
-import { Config } from './config'
+import { Config, modelMap } from './config'
 import { UserData, HhsHuatuUser } from './types'
 import { resolve } from 'path'
 import { readFile } from 'fs/promises'
+import { isNovelAIV5Model } from './services/opusQuota'
 
 export class MembershipSystem {
   // 用户数据内存缓存
@@ -787,6 +788,21 @@ export class MembershipSystem {
     }
 
     return true
+  }
+
+  // 当前用户是否为未过期会员
+  isActiveMember(userId: string): boolean {
+    this.checkAndResetDailyUsage(userId)
+    const user = this.userData[userId]
+    return !!user?.isMember && user.membershipExpiry > Date.now()
+  }
+
+  // nai5 / nai5c 会消耗 NovelAI 配额，可配置为仅会员可用
+  canUseNai5(userId: string, session: Session, model?: string): boolean | string {
+    if (!this.config.membershipEnabled || !this.config.nai5MemberOnly) return true
+    if (!isNovelAIV5Model(modelMap[model] || model)) return true
+    if (this.isActiveMember(userId)) return true
+    return session.text('commands.novelai.messages.nai5-member-only')
   }
 
   // 增加用户使用次数

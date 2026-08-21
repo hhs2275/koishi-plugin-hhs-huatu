@@ -81,6 +81,7 @@ commands:
       invalid-token: トークンが無効または期限切れです。
       all-tokens-invalid: すべてのトークンが無効または期限切れです。
       unauthorized: トークンが認可されていません。
+      nai5-member-only: nai5 / nai5c は NovelAI のクォータを消費するため、会員限定です。会員になるか、別のモデルに切り替えてください。
       daily-limit-reached: 本日の利用上限 ({0}回) に達しました。
       member-daily-limit-reached: 本日の会員利用上限 ({0}回) に達しました。
       membership-expired: 会員資格が期限切れになりました。
@@ -187,6 +188,7 @@ commands:
       invalid-token: トークンが無効です。
       all-tokens-invalid: すべてのトークンが無効です。
       unauthorized: トークンが認可されていません。
+      nai5-member-only: nai5 / nai5c は NovelAI のクォータを消費するため、会員限定です。会員になるか、別のモデルに切り替えてください。
       daily-limit-reached: 本日の利用上限 ({0}回) に達しました。
       member-daily-limit-reached: 会員利用上限 ({0}回) に達しました。
       membership-expired: 会員資格が期限切れになりました。

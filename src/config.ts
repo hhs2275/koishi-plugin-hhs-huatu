@@ -287,6 +287,7 @@ export interface Config extends PromptConfig, ParamConfig {
   nonMemberDailyLimit?: number
   memberDailyLimit?: number
   membershipAuthLv?: number
+  nai5MemberOnly?: boolean
   nonMemberCooldown?: number
   memberCooldown?: number
   memberCleanupEnabled?: boolean
@@ -585,6 +586,7 @@ export const Config = Schema.intersect([
     nonMemberDailyLimit: Schema.number().description('非会员每日使用上限').default(5),
     memberDailyLimit: Schema.number().description('会员每日使用上限，设为0表示无限制').default(0),
     membershipAuthLv: Schema.number().description('设置会员状态所需的权限等级').default(3),
+    nai5MemberOnly: Schema.boolean().description('仅允许会员使用 nai5 / nai5c。V5 会消耗 NovelAI 配额，开启后非会员将收到提示并无法使用。需先启用会员系统。').default(true),
     nonMemberCooldown: Schema.number().description('非会员每张图的CD时间（秒）').default(60),
     memberCooldown: Schema.number().description('会员每张图的CD时间（秒），设为0表示无CD').default(0),
     memberCleanupEnabled: Schema.boolean().description('是否启用过期会员信息自动清理').default(true),

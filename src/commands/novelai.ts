@@ -177,6 +177,11 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
         if (typeof canUse === 'string') {
           return canUse // 返回错误消息
         }
+
+        const canUseNai5 = membershipSystem.canUseNai5(userId, session, options.model || config.model)
+        if (typeof canUseNai5 === 'string') {
+          return canUseNai5
+        }
       }
 
       const now = Date.now()

@@ -36,6 +36,14 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
           return '你还没有进行过任务'
         }
 
+        if (config.membershipEnabled) {
+          const canUseNai5 = membershipSystem.canUseNai5(userId, session, lastTask.options?.model || config.model)
+          if (typeof canUseNai5 === 'string') {
+            queueSystem.releaseRedrawLock()
+            return canUseNai5
+          }
+        }
+
         let repeatCount = 1
         if (count) {
           const numMap = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
