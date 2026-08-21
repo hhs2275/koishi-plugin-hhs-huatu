@@ -45,15 +45,15 @@ nai4 -M <提示词> <图片>
 
 ### 🎨 角色提示词功能（Characters）
 
-支持为图像中的不同角色指定独立的提示词和位置，仅适用于 NovelAI v4/v4.5 模型。
+支持为图像中的不同角色指定独立的提示词和位置，适用于 NovelAI v4 / v4.5 / v5 模型。
 
 **支持的模型：**
 - ✅ nai-diffusion-4-curated-preview (`nai4c`)
 - ✅ nai-diffusion-4-full (`nai4`)
 - ✅ nai-diffusion-4-5-curated (`nai4-5c`)
 - ✅ nai-diffusion-4-5-full (`nai4-5`)
-- ✅ nai-diffusion-5-curated (`nai-v5-curated`)
-- ✅ nai-diffusion-5-full (`nai-v5-full`)
+- ✅ nai-diffusion-5-curated (`nai5c`)
+- ✅ nai-diffusion-5-full (`nai5`)
 
 **使用方法：**
 ```bash
@@ -192,7 +192,7 @@ nai4-5 <提示词> -P -p "cs,1,1;c,0.8,0.9"
 
 ### ⚙️ 其他功能
 
-- **多模型支持**：快捷指令 `nai4`、`nai4c`、`nai4-5`、`nai4-5c` 直接调用不同模型
+- **多模型支持**：快捷指令 `nai4`、`nai4c`、`nai4-5`、`nai4-5c`、`nai5`、`nai5c` 直接调用不同模型
 - **参数调整**：`-R` 参数调整 cfg_rescale（范围 0-1）
 - **调试模式**：可配置是否输出详细调试日志
 
@@ -207,11 +207,13 @@ nai4 <提示词>                   # 使用 v4 full 模型
 nai4c <提示词>                  # 使用 v4 curated 模型
 nai4-5 <提示词>                 # 使用 v4.5 full 模型
 nai4-5c <提示词>                # 使用 v4.5 curated 模型
+nai5 <提示词>                   # 使用 v5 full 模型
+nai5c <提示词>                  # 使用 v5 curated 模型
 
 # 局部重绘（仅 v4/v4.5）
 nai4 <提示词> <图片> -M
 
-# 角色提示词（仅 v4/v4.5）
+# 角色提示词（v4 / v4.5 / v5）
 nai4 场景 -K "角色1@位置;角色2@位置"
 
 # 常用参数
@@ -321,7 +323,7 @@ Region 的值一般为 ap- 加上你选择的所属地域的拼音，以下为�
 
 ### 如何使用角色提示词功能？
 
-1. 确保使用 v4 或 v4.5 模型（`nai4`、`nai4c`、`nai4-5`、`nai4-5c`）
+1. 确保使用 v4 / v4.5 / v5 模型（`nai4`、`nai4c`、`nai4-5`、`nai4-5c`、`nai5`、`nai5c`）
 2. 使用 `-K` 参数指定角色
 3. 用分号 `;` 或 `；` 分隔不同角色
 4. 用 `@位置` 指定角色位置（可选）

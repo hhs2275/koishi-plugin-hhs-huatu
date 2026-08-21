@@ -10,7 +10,8 @@
     "incremental": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "moduleResolution": "bundler"
+    "moduleResolution": "bundler",
+    "strict": false
   },
   "include": [
     "src"
