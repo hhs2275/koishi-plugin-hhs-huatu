@@ -2,17 +2,22 @@ import { Context, trimSlash } from 'koishi'
 import { Config } from '../config'
 import { Subscription } from '../types'
 
-const DEFAULT_API_ENDPOINT = 'https://api.novelai.net'
+// NovelAI currently serves subscription data from the image API host. The
+// primary API host returns a 400 instructing third-party clients to update to
+// the image URL, so use the configured image endpoint here.
+const DEFAULT_IMAGE_ENDPOINT = 'https://image.novelai.net'
 
 /** 获取 NovelAI 当前订阅信息（包含 Opus usage 状态）。 */
 export async function fetchSubscription(ctx: Context, config: Config, token: string): Promise<Subscription> {
   const headers = {
-    Authorization: `Bearer ${token}`,
+    referer: 'https://novelai.net/',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36',
     'Content-Type': 'application/json',
     ...(config.headers || {}),
+    Authorization: `Bearer ${token}`,
   }
-  const apiEndpoint = trimSlash(config.apiEndpoint || DEFAULT_API_ENDPOINT)
-  return ctx.http.get(`${apiEndpoint}/user/subscription`, {
+  const imageEndpoint = trimSlash(config.endpoint || DEFAULT_IMAGE_ENDPOINT)
+  return ctx.http.get(`${imageEndpoint}/user/subscription`, {
     headers,
     timeout: 30000,
   }) as Promise<Subscription>
@@ -62,4 +67,3 @@ export function formatOpusQuota(subscription: Subscription): string {
 
   return `Opus 免费额度：${percent}%\n下次恢复：${refillText}\n状态：${status}`
 }
-
