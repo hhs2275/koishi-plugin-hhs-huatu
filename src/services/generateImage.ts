@@ -276,7 +276,8 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
           })
 
           // 设置基础参数
-          parameters.params_version = 3 // 使用最新的参数版本
+          const isNAI5 = model === 'nai-diffusion-5-curated' || model === 'nai-diffusion-5-full'
+          parameters.params_version = isNAI5 ? 4 : 3 // V5 使用新版参数协议
           parameters.sampler = sampler.sd2nai(options.sampler, model)
 
           // 处理反向提示词
@@ -298,7 +299,7 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
 
 
           const isNAI3 = model === 'nai-diffusion-3'
-          const isNAI4 = model === 'nai-diffusion-4-curated-preview' || model === 'nai-diffusion-4-full' || model === 'nai-diffusion-4-5-curated' || model === 'nai-diffusion-4-5-full'
+          const isNAI4 = model === 'nai-diffusion-4-curated-preview' || model === 'nai-diffusion-4-full' || model === 'nai-diffusion-4-5-curated' || model === 'nai-diffusion-4-5-full' || isNAI5
 
           if (isNAI3) {
             parameters.legacy_v3_extend = true
