@@ -8,6 +8,8 @@ import { isNovelAIV5Model } from './services/opusQuota'
 export class MembershipSystem {
   // 用户数据内存缓存
   public userData: Dict<UserData> = Object.create(null)
+  // 已进队但尚未出图的 nai5 次数，避免并发任务都按免费档计费
+  private pendingNai5Usage: Dict<number> = Object.create(null)
 
   // 定时任务取消函数
   private cleanupTimerDispose: (() => void) | null = null
@@ -75,6 +77,7 @@ export class MembershipSystem {
       dailyLimit: 'unsigned',
       lastDrawTime: 'unsigned',
       points: 'integer',
+      nai5DailyUsage: 'unsigned',
     }, {
       autoInc: true,
       unique: ['visitorId'],
@@ -105,6 +108,7 @@ export class MembershipSystem {
           dailyLimit: row.dailyLimit,
           lastDrawTime: row.lastDrawTime,
           points: row.points,
+          nai5DailyUsage: row.nai5DailyUsage || 0,
         }
       }
       this.ctx.logger.info(`会员系统数据从数据库加载成功，共 ${loadedCount} 条记录`)
@@ -125,6 +129,7 @@ export class MembershipSystem {
         dailyLimit: 0,
         lastDrawTime: 0,
         points: 0,
+        nai5DailyUsage: 0,
       }], ['visitorId'])
     } catch (err) {
       this.ctx.logger.error('保存点数刷新时间失败', err)
@@ -145,6 +150,7 @@ export class MembershipSystem {
         dailyLimit: user.dailyLimit,
         lastDrawTime: user.lastDrawTime || 0,
         points: user.points || 0,
+        nai5DailyUsage: user.nai5DailyUsage || 0,
       }], ['visitorId'])
       if (this.config.debugLog) this.ctx.logger.info(`用户 ${userId} 数据已同步到数据库`)
     } catch (err) {
@@ -167,6 +173,7 @@ export class MembershipSystem {
           dailyLimit: user.dailyLimit,
           lastDrawTime: user.lastDrawTime || 0,
           points: user.points || 0,
+          nai5DailyUsage: user.nai5DailyUsage || 0,
         })
       }
       if (rows.length > 0) {
@@ -193,6 +200,7 @@ export class MembershipSystem {
     strength?: number
     isImg2Img?: boolean
     preciseRefCount?: number
+    chargeOpusFreeRange?: boolean
   }): number {
     if (!this.config.pointsEnabled) return 0
 
@@ -201,12 +209,14 @@ export class MembershipSystem {
       smea = false, smeaDyn = false,
       strength = 1, isImg2Img = false,
       preciseRefCount = 0,
+      chargeOpusFreeRange = false,
     } = params
 
     const pixels = width * height
 
-    // Opus 免费范围判定：标准分辨率 + 28步以下
-    if (pixels <= 1048576 && steps <= 28) {
+    // Opus 免费范围判定：标准分辨率 + 28步以下。
+    // nai5 日限用完后与 NovelAI 配额耗尽一致，跳过免费档并按 Anlas 估算扣点。
+    if (!chargeOpusFreeRange && pixels <= 1048576 && steps <= 28) {
       // 即使 Opus 免费，精准参考仍有额外费用
       return preciseRefCount * 5
     }
@@ -414,6 +424,7 @@ export class MembershipSystem {
             lastDrawTime: user.lastDrawTime || 0,
             // 导入时如果是会员，给予默认点数；否则给 0
             points: user.points !== undefined ? user.points : (user.isMember ? defaultPoints : 0),
+            nai5DailyUsage: user.nai5DailyUsage || 0,
           }
           success++
         } catch (err) {
@@ -713,6 +724,7 @@ export class MembershipSystem {
         lastUsed: Date.now(),
         dailyLimit: this.config.nonMemberDailyLimit,
         points: 0,
+        nai5DailyUsage: 0,
       }
     }
   }
@@ -729,6 +741,7 @@ export class MembershipSystem {
       now.getMonth() !== lastUsed.getMonth() ||
       now.getFullYear() !== lastUsed.getFullYear()) {
       this.userData[userId].dailyUsage = 0
+      this.userData[userId].nai5DailyUsage = 0
     }
 
     // 检查会员是否过期
@@ -805,8 +818,52 @@ export class MembershipSystem {
     return session.text('commands.novelai.messages.nai5-member-only')
   }
 
+  isNai5Model(model?: string): boolean {
+    return isNovelAIV5Model(modelMap[model] || model)
+  }
+
+  getNai5DailyLimit(): number {
+    return this.config.memberNai5DailyLimit || 0
+  }
+
+  getNai5DailyUsage(userId: string): number {
+    this.checkAndResetDailyUsage(userId)
+    return this.userData[userId]?.nai5DailyUsage || 0
+  }
+
+  /**
+   * 本次 nai5 任务中，超出会员免费日限、需要按 Anlas 计费的张数。
+   * 日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）。
+   */
+  getNai5OverageCount(userId: string, drawCount: number = 1): number {
+    if (!this.config.membershipEnabled) return 0
+    const limit = this.getNai5DailyLimit()
+    if (limit <= 0 || drawCount <= 0) return 0
+    if (!this.isActiveMember(userId)) return 0
+
+    const used = this.getNai5DailyUsage(userId) + (this.pendingNai5Usage[userId] || 0)
+    return Math.min(drawCount, Math.max(0, used + drawCount - limit))
+  }
+
+  shouldChargeNai5Overage(userId: string, model?: string, drawCount: number = 1): boolean {
+    return this.isNai5Model(model) && this.getNai5OverageCount(userId, drawCount) > 0
+  }
+
+  reserveNai5Usage(userId: string, count: number) {
+    if (!this.config.membershipEnabled || count <= 0) return
+    this.pendingNai5Usage[userId] = (this.pendingNai5Usage[userId] || 0) + count
+  }
+
+  releaseNai5Usage(userId: string, count: number) {
+    if (count <= 0) return
+    const current = this.pendingNai5Usage[userId] || 0
+    const next = Math.max(0, current - count)
+    if (next) this.pendingNai5Usage[userId] = next
+    else delete this.pendingNai5Usage[userId]
+  }
+
   // 增加用户使用次数
-  incrementUsage(userId: string, drawCount: number = 1) {
+  incrementUsage(userId: string, drawCount: number = 1, model?: string, nai5Count?: number) {
     if (!this.config.membershipEnabled) return
 
     const now = Date.now()
@@ -815,6 +872,11 @@ export class MembershipSystem {
 
     this.userData[userId].dailyUsage += drawCount
     this.userData[userId].lastUsed = now
+    if (this.isNai5Model(model)) {
+      const add = nai5Count ?? drawCount
+      this.userData[userId].nai5DailyUsage = (this.userData[userId].nai5DailyUsage || 0) + add
+      this.releaseNai5Usage(userId, add)
+    }
 
     // 保存用户数据
     this.syncUserToDB(userId)

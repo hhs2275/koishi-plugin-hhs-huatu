@@ -3,7 +3,7 @@ import { h, Session } from 'koishi'
 import { Runtime } from '../runtime'
 import { ImageData } from '../types'
 import { clampToNAILimit, darkenImage, download, extractImages, extractMaskWithAntiArtifact, NetworkError } from '../utils'
-import { calculatePointsCost } from '../services/points'
+import { calculateTaskPointsCost, getTaskDrawCount } from '../services/points'
 
 /**
  * 等待用户发送一张图片，返回图片 URL。
@@ -96,7 +96,11 @@ export async function runInpaintInteraction(
 
           let costInfo = ''
           if (config.pointsEnabled) {
-            const pointsCost = calculatePointsCost(runtime, session, options, alignedWidth, alignedHeight, true)
+            const drawCount = getTaskDrawCount(options)
+            const pointsCost = calculateTaskPointsCost(
+              runtime, session, options, alignedWidth, alignedHeight, true, 0,
+              session.userId, options.model || config.model, drawCount,
+            ).total
             costInfo = session.text('commands.novelai.messages.inpaint-cost-info', [pointsCost])
           }
 

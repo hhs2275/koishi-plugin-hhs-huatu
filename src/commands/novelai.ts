@@ -6,7 +6,7 @@ import { clampToNAILimit, download, extractImages, forceDataPrefix, NetworkError
 import { Runtime } from '../runtime'
 import { runInpaintInteraction } from '../interactions/inpaint'
 import { runPreciseRefInteraction } from '../interactions/preciseRef'
-import { calculatePointsCost } from '../services/points'
+import { calculateTaskPointsCost, getTaskDrawCount } from '../services/points'
 function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: string; extractedOptions: any } {
   const extractedOptions: any = {}
   let cleanedUndesired = undesired.trim()
@@ -241,6 +241,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
 
       // ========== 点数计算与预扣 ==========
       let pointsCost = 0
+      let nai5Overage = false
       if (config.pointsEnabled && config.membershipEnabled) {
         // 确定是否图生图（用于步数与计费判断）
         // 优先从 session.elements（适配器解析好的元素树，不触发字符串解析）判断，
@@ -251,13 +252,26 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
 
         // 确定精准参考图片数量
         const preciseRefCount = (options as any)?._preciseRefImages?.length || 0
+        const drawCount = getTaskDrawCount(options)
+        const isImg2Img = !!options.inpaint || imgUrl_check
 
-        // 计算点数消耗（含步数、SMEA/DYN、批量与迭代的乘算）
-        pointsCost = calculatePointsCost(runtime, session, options, resWidth, resHeight, !!options.inpaint || imgUrl_check, preciseRefCount)
+        // nai5 日限内走 Opus 免费档；超出后按 Anlas 估算扣点（标准分辨率也会扣）
+        const cost = calculateTaskPointsCost(
+          runtime, session, options, resWidth, resHeight, isImg2Img, preciseRefCount,
+          userId, options.model || config.model, drawCount,
+        )
+        pointsCost = cost.total
+        nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, options.model || config.model, drawCount)
+        if (membershipSystem.isNai5Model(options.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+          membershipSystem.reserveNai5Usage(userId, drawCount)
+          ; (options as any)._reservedNai5 = drawCount
+        }
 
         if (pointsCost > 0) {
           const result = await membershipSystem.deductPoints(userId, pointsCost)
           if (result === -1) {
+            membershipSystem.releaseNai5Usage(userId, (options as any)._reservedNai5 || 0)
+            delete (options as any)._reservedNai5
             const currentPoints = membershipSystem.getPoints(userId)
             return session.text('commands.novelai.messages.points-insufficient', [currentPoints, pointsCost])
           }
@@ -273,21 +287,24 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
       const { totalWaiting, userQueue } = queueSystem.getQueueStatus(userId)
       const totalWithCurrent = totalWaiting + 1  // +1 表示包含当前即将添加的任务
 
-      if ((totalWithCurrent > 0 || userQueue > 0) && config.showQueueInfo) {
-        // 添加调试日志
-        ctx.logger.debug(`队列信息 - 总队列: ${totalWithCurrent}, 用户队列: ${userQueue}`)
+      const showQueue = (totalWithCurrent > 0 || userQueue > 0) && config.showQueueInfo
+      if (showQueue || pointsCost > 0 || nai5Overage) {
+        if (showQueue) {
+          ctx.logger.debug(`队列信息 - 总队列: ${totalWithCurrent}, 用户队列: ${userQueue}`)
+        }
 
-        // 构建点数信息
+        const queueMsg = showQueue
+          ? session.text('commands.novelai.messages.queue-position', [totalWithCurrent, userQueue])
+          : ''
         const pointsInfo = (pointsCost > 0)
           ? session.text('commands.novelai.messages.points-deducted', [pointsCost])
           : ''
-
-        const queueMsg = session.text('commands.novelai.messages.queue-position', [
-          totalWithCurrent,
-          userQueue
-        ]) + pointsInfo
-
-        await session.send(queueMsg)
+        const overageInfo = nai5Overage
+          ? session.text('commands.novelai.messages.nai5-overage-charged')
+          : ''
+        const charged = queueMsg ? queueMsg + pointsInfo : pointsInfo.replace(/^[,，、]\s*/, '')
+        const notice = [charged, overageInfo].filter(Boolean).join('\n').trim()
+        if (notice) await session.send(notice)
 
         // 在发送队列信息后立即更新lastDrawTime，而不是等到图片生成完成
         if (config.membershipEnabled) {

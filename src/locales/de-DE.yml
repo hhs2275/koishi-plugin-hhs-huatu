@@ -83,6 +83,7 @@ commands:
       all-tokens-invalid: Alle Token sind ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
       unauthorized: Token nicht autorisiert, möglicherweise ist eine Verlängerung erforderlich. Bitte kontaktieren Sie den Administrator.
       nai5-member-only: nai5 / nai5c verbraucht NovelAI-Kontingent und ist nur für Mitglieder verfügbar. Bitte werden Sie Mitglied oder wechseln Sie zu einem anderen Modell.
+      nai5-overage-charged: Das heutige kostenlose nai5/nai5c-Kontingent ist aufgebraucht. Diese Anfrage wird nach Anlas-Schätzung abgerechnet.
       daily-limit-reached: Ihr tägliches Limit ({0} Mal) wurde erreicht. Bitte werden Sie Mitglied oder kommen Sie morgen wieder.
       member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
       membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.
@@ -192,6 +193,7 @@ commands:
       all-tokens-invalid: Alle Token sind ungültig oder abgelaufen, bitte kontaktieren Sie den Administrator.
       unauthorized: Token nicht autorisiert, möglicherweise ist eine Verlängerung erforderlich. Bitte kontaktieren Sie den Administrator.
       nai5-member-only: nai5 / nai5c verbraucht NovelAI-Kontingent und ist nur für Mitglieder verfügbar. Bitte werden Sie Mitglied oder wechseln Sie zu einem anderen Modell.
+      nai5-overage-charged: Das heutige kostenlose nai5/nai5c-Kontingent ist aufgebraucht. Diese Anfrage wird nach Anlas-Schätzung abgerechnet.
       daily-limit-reached: Ihr tägliches Limit ({0} Mal) wurde erreicht. Bitte werden Sie Mitglied oder kommen Sie morgen wieder.
       member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
       membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.

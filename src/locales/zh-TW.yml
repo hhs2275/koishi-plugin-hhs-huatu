@@ -81,6 +81,7 @@ commands:
       all-tokens-invalid: 所有令牌均無效或已過期，請聯繫管理員更新令牌。
       unauthorized: 令牌未授權，可能需要續費，請聯繫管理員。
       nai5-member-only: nai5 / nai5c 會消耗 NovelAI 配額，僅限會員使用。請充值會員，或切換到其他模型。
+      nai5-overage-charged: 今日 nai5/nai5c 免費次數已用完，本次將按 Anlas 估算扣除點數。
       daily-limit-reached: 您今日的使用次數已達上限({0}次)，請充值會員或者明天再來。
       member-daily-limit-reached: 您今日的會員使用次數已達上限({0}次)，請明天再來。
       membership-expired: 您的會員已過期，已恢復為普通使用者權限。
@@ -192,6 +193,7 @@ commands:
       all-tokens-invalid: 所有令牌均無效或已過期，請聯繫管理員更新令牌。
       unauthorized: 令牌未授權，可能需要續費，請聯繫管理員。
       nai5-member-only: nai5 / nai5c 會消耗 NovelAI 配額，僅限會員使用。請充值會員，或切換到其他模型。
+      nai5-overage-charged: 今日 nai5/nai5c 免費次數已用完，本次將按 Anlas 估算扣除點數。
       daily-limit-reached: 您今日的使用次數已達上限({0}次)，請充值會員或者明天再來。
       member-daily-limit-reached: 您今日的會員使用次數已達上限({0}次)，請明天再來。
       membership-expired: 您的會員已過期，已恢復為普通使用者權限。

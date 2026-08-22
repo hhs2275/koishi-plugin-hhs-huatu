@@ -170,6 +170,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
             lastUsed: Date.now(),
             dailyLimit: config.memberDailyLimit || 0,
             points: config.pointsEnabled ? (config.pointsDefault || 200) : 0,
+            nai5DailyUsage: 0,
           }
         } else {
           // 如果用户已经是会员且会员未过期，则在原有期限上增加天数
@@ -242,6 +243,16 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           }
         }
 
+        let nai5Info = ''
+        if (config.memberNai5DailyLimit > 0) {
+          const nai5Used = user.nai5DailyUsage || 0
+          const nai5Remaining = Math.max(0, config.memberNai5DailyLimit - nai5Used)
+          nai5Info = `\nnai5/nai5c 今日免费：${config.memberNai5DailyLimit} 次，已用 ${nai5Used} 次，剩余 ${nai5Remaining} 次`
+          if (config.pointsEnabled && nai5Remaining === 0) {
+            nai5Info += '（超出后按 Anlas 估算扣点）'
+          }
+        }
+
         let pointsInfo = ''
         if (config.pointsEnabled) {
           const points = user.points || 0
@@ -254,7 +265,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           }
         }
 
-        return `${usageInfo}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
+        return `${usageInfo}${nai5Info}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
       } else {
         const remaining = config.nonMemberDailyLimit - user.dailyUsage
 
@@ -316,16 +327,21 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
             return `用户 ${targetId} 不存在`
           }
           userData[targetId].dailyUsage = 0
+          userData[targetId].nai5DailyUsage = 0
           await membershipSystem.saveUserData()
           const user = userData[targetId]
           const dailyLimit = user.isMember ? config.memberDailyLimit : config.nonMemberDailyLimit
           const remaining = dailyLimit - user.dailyUsage
+          const nai5Limit = config.memberNai5DailyLimit || 0
+          const nai5Line = nai5Limit > 0
+            ? `\nnai5/nai5c 每日免费：${nai5Limit} 次\nnai5 已使用：${user.nai5DailyUsage || 0} 次`
+            : ''
 
           return `✅ 已重置用户 ${targetId} 的使用次数\n` +
             `当前状态：${user.isMember ? '会员' : '非会员'}\n` +
             `每日限额：${dailyLimit} 次\n` +
             `已使用：${user.dailyUsage} 次\n` +
-            `剩余：${remaining} 次`
+            `剩余：${remaining} 次` + nai5Line
 
         }
 

@@ -1,7 +1,8 @@
 // 重画命令与快捷中间件：基于上次任务参数重复生成
-import { Context } from 'koishi'
-import { Config } from '../config'
+import { Context, h } from 'koishi'
+import { Config, orientMap } from '../config'
 import { handleError, Runtime } from '../runtime'
+import { calculateTaskPointsCost, getTaskDrawCount } from '../services/points'
 
 export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
   const { membershipSystem, queueSystem, userData } = runtime
@@ -76,17 +77,58 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
           return session.text('commands.novelai.messages.exceed-user-queue', [config.maxUserQueueSize])
         }
 
-        // ===== 重画点数预扣 =====
+        // ===== 重画点数预扣（按当前 nai5 日限逐张重算，不能复用上次免费单价） =====
         let redrawDeductedPoints = 0
-        if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
-          const totalPointsCost = lastTask.pointsCost * repeatCount
-          const result = await membershipSystem.deductPoints(userId, totalPointsCost)
-          if (result === -1) {
-            const currentPoints = membershipSystem.getPoints(userId)
-            queueSystem.releaseRedrawLock()
-            return session.text('commands.novelai.messages.points-insufficient', [currentPoints, totalPointsCost])
+        let redrawPerTask: number[] = []
+        let nai5Overage = false
+        if (config.membershipEnabled && config.pointsEnabled) {
+          let resWidth = 832, resHeight = 1216
+          const lastOptions = lastTask.options || {}
+          if (lastOptions.inpaint && lastOptions._alignedWidth && lastOptions._alignedHeight) {
+            resWidth = lastOptions._alignedWidth
+            resHeight = lastOptions._alignedHeight
+          } else if (lastOptions.resolution) {
+            resWidth = lastOptions.resolution.width || 832
+            resHeight = lastOptions.resolution.height || 1216
+          } else {
+            const res = session.resolve(config.resolution)
+            if (typeof res === 'string' && orientMap[res]) {
+              resWidth = orientMap[res].width
+              resHeight = orientMap[res].height
+            } else if (res && typeof res === 'object') {
+              resWidth = (res as any).width || 832
+              resHeight = (res as any).height || 1216
+            }
           }
-          redrawDeductedPoints = totalPointsCost
+
+          const imgUrl_check = h.select(session.elements ?? [], 'img').length > 0
+            || /<img\b[^>]*?>/i.test(lastTask.input || '')
+            || lastOptions.inpaint
+          const preciseRefCount = lastOptions._preciseRefImages?.length || 0
+          const drawCount = getTaskDrawCount(lastOptions, repeatCount)
+          const cost = calculateTaskPointsCost(
+            runtime, session, lastOptions, resWidth, resHeight, !!lastOptions.inpaint || imgUrl_check, preciseRefCount,
+            userId, lastOptions.model || config.model, drawCount,
+          )
+          const imagesPerTask = Math.max(1, Math.floor(drawCount / repeatCount))
+          for (let i = 0; i < repeatCount; i++) {
+            const start = i * imagesPerTask
+            redrawPerTask.push(cost.perImage.slice(start, start + imagesPerTask).reduce((sum, n) => sum + n, 0))
+          }
+          nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, lastOptions.model || config.model, drawCount)
+          if (membershipSystem.isNai5Model(lastOptions.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+            membershipSystem.reserveNai5Usage(userId, drawCount)
+          }
+          if (cost.total > 0) {
+            const result = await membershipSystem.deductPoints(userId, cost.total)
+            if (result === -1) {
+              membershipSystem.releaseNai5Usage(userId, drawCount)
+              const currentPoints = membershipSystem.getPoints(userId)
+              queueSystem.releaseRedrawLock()
+              return session.text('commands.novelai.messages.points-insufficient', [currentPoints, cost.total])
+            }
+            redrawDeductedPoints = cost.total
+          }
         }
 
         // 先增加用户任务计数
@@ -108,8 +150,10 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
           const pointsInfo = (redrawDeductedPoints > 0)
             ? session.text('commands.novelai.messages.points-deducted', [redrawDeductedPoints])
             : ''
-
-          await session.send(queueMsg + pointsInfo)
+          const overageInfo = nai5Overage
+            ? session.text('commands.novelai.messages.nai5-overage-charged')
+            : ''
+          await session.send([queueMsg + pointsInfo, overageInfo].filter(Boolean).join('\n'))
 
           // 在发送队列信息后立即更新lastDrawTime
           if (config.membershipEnabled) {
@@ -284,8 +328,12 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
             // 这是因为 generateImage 在请求失败时通过 return 而非 throw 处理错误，
             // 所以 reject 回调不会被调用，需要依靠 generateImage 内部的退款逻辑
             const taskOptions = { ...lastTask.options }
-            if (config.membershipEnabled && config.pointsEnabled && lastTask.pointsCost > 0) {
-              taskOptions._deductedPoints = lastTask.pointsCost
+            if (config.membershipEnabled && config.pointsEnabled) {
+              const unitCost = redrawPerTask[index] || 0
+              if (unitCost > 0) taskOptions._deductedPoints = unitCost
+            }
+            if (config.membershipEnabled && membershipSystem.isNai5Model(lastTask.options?.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+              taskOptions._reservedNai5 = getTaskDrawCount(lastTask.options, 1)
             }
 
             queueSystem.taskQueue.push({

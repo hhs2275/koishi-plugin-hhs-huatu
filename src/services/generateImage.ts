@@ -11,6 +11,18 @@ import { handleError, Runtime } from '../runtime'
 import { fetchSubscription, isNovelAIV5Model, isOpusQuotaExhausted } from './opusQuota'
 
 export async function generateImage(runtime: Runtime, session: Session<'authority'>, options: any, input: string) {
+  try {
+    return await generateImageInner(runtime, session, options, input)
+  } finally {
+    const leftover = (options as any)?._reservedNai5 || 0
+    if (leftover > 0) {
+      runtime.membershipSystem.releaseNai5Usage(session.userId, leftover)
+      ; (options as any)._reservedNai5 = 0
+    }
+  }
+}
+
+async function generateImageInner(runtime: Runtime, session: Session<'authority'>, options: any, input: string) {
     // 添加调试日志，检查session对象
     if (runtime.config.debugLog) runtime.ctx.logger.info(`generateImage开始处理，sessionId=${session.id}，userId=${session.userId}`)
 
@@ -851,7 +863,7 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
               continue
             }
           }
-          // 生成失败，退还点数
+          // 生成失败，退还点数（nai5 预占由外层 finally 释放）
           const deductedPoints = (options as any)?._deductedPoints || 0
           if (deductedPoints > 0 && runtime.config.pointsEnabled) {
             await runtime.membershipSystem.refundPoints(session.userId, deductedPoints)
@@ -887,7 +899,11 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
 
             // 审核不通过也扣减使用次数
             if (runtime.config.membershipEnabled) {
-              runtime.membershipSystem.incrementUsage(session.userId, 1)
+              const nai5Count = options.batch || 1
+              runtime.membershipSystem.incrementUsage(session.userId, 1, options.model || runtime.config.model, nai5Count)
+              if ((options as any)._reservedNai5) {
+                ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - nai5Count)
+              }
             }
 
             // 如果启用了禁言功能，则禁言用户
@@ -968,7 +984,11 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
 
       // 图片发送成功后，增加使用次数
       if (runtime.config.membershipEnabled) {
-        runtime.membershipSystem.incrementUsage(session.userId, 1)
+        const nai5Count = options.batch || 1
+        runtime.membershipSystem.incrementUsage(session.userId, 1, options.model || runtime.config.model, nai5Count)
+        if ((options as any)._reservedNai5) {
+          ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - nai5Count)
+        }
       }
 
       if (messageIds.length && runtime.config.recallTimeout) {
@@ -987,7 +1007,7 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
         parameters.seed++
       } catch (err) {
         container.forEach(cleanUp)
-        // 生成过程中出错，退还点数
+        // 生成过程中出错，退还点数（nai5 预占由外层 finally 释放）
         const deductedPoints = (options as any)?._deductedPoints || 0
         if (deductedPoints > 0 && runtime.config.pointsEnabled) {
           await runtime.membershipSystem.refundPoints(session.userId, deductedPoints)

@@ -105,6 +105,7 @@ export interface UserData {
   dailyLimit: number // 每日使用上限
   lastDrawTime?: number // 时间戳，上次绘图时间，用于计算CD
   points?: number // 当前点数
+  nai5DailyUsage?: number // 当日 nai5 / nai5c 使用次数
 }
 
 // 数据库表结构
@@ -118,6 +119,7 @@ export interface HhsHuatuUser {
   dailyLimit: number
   lastDrawTime: number
   points: number
+  nai5DailyUsage: number
 }
 
 // 声明 Koishi 数据库表
