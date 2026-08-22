@@ -32,6 +32,7 @@ export function calculatePointsCost(
     isImg2Img,
     preciseRefCount,
     chargeOpusFreeRange,
+    model: options.model,
   }) * total
 }
 
@@ -48,6 +49,7 @@ function getUnitPointsCost(
   isImg2Img: boolean,
   preciseRefCount: number,
   chargeOpusFreeRange: boolean = false,
+  model?: string,
 ): number {
   const steps = options.steps ?? session.resolve(isImg2Img ? runtime.config.imageSteps : runtime.config.textSteps) ?? 23
   const resolvedSmeaDyn = options.smeaDyn ?? runtime.config.smeaDyn ?? false
@@ -63,6 +65,7 @@ function getUnitPointsCost(
     isImg2Img,
     preciseRefCount,
     chargeOpusFreeRange,
+    model: model ?? options.model,
   })
 }
 
@@ -81,7 +84,7 @@ export function calculateTaskPointsCost(
   const uid = userId || session.userId
   const resolvedModel = model ?? options.model
   const count = Math.max(1, drawCount)
-  const unitFree = getUnitPointsCost(runtime, session, options, width, height, isImg2Img, preciseRefCount)
+  const unitFree = getUnitPointsCost(runtime, session, options, width, height, isImg2Img, preciseRefCount, false, resolvedModel)
   const perImage: number[] = []
 
   if (!runtime.membershipSystem.isNai5Model(resolvedModel)) {
@@ -92,7 +95,7 @@ export function calculateTaskPointsCost(
   const overageCount = runtime.membershipSystem.getNai5OverageCount(uid, count)
   const freeCount = count - overageCount
   const unitOverage = overageCount > 0
-    ? getUnitPointsCost(runtime, session, options, width, height, isImg2Img, preciseRefCount, true)
+    ? getUnitPointsCost(runtime, session, options, width, height, isImg2Img, preciseRefCount, true, resolvedModel)
     : unitFree
 
   for (let i = 0; i < freeCount; i++) perImage.push(unitFree)

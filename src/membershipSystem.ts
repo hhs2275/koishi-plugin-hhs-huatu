@@ -188,8 +188,14 @@ export class MembershipSystem {
   // ========== 点数计算相关 ==========
 
   /**
-   * 计算预估消耗点数（基于 Opus 套餐）
-   * 社区逆向工程的 NAI Anlas 估算公式
+   * 按 NovelAI 官网前端公式计算 Anlas。
+   * 来源：novelai.net/_next/static/chunks/1052-*.js
+   * SDXL / V4 / V4.5 / V5：
+   *   M = ceil(2.951823174884865e-6 * pixels + 5.753298233447344e-7 * pixels * steps)
+   *   M *= sm_dyn ? 1.4 : smea ? 1.2 : 1
+   *   V5 再乘 1.5
+   *   cost = max(ceil(M * strength), 2)
+   * Opus 免费：无角色参考、像素 ≤ 1048576、步数 ≤ 28 时第一张为 0。
    */
   calculatePointsCost(params: {
     width: number
@@ -201,6 +207,7 @@ export class MembershipSystem {
     isImg2Img?: boolean
     preciseRefCount?: number
     chargeOpusFreeRange?: boolean
+    model?: string
   }): number {
     if (!this.config.pointsEnabled) return 0
 
@@ -210,30 +217,31 @@ export class MembershipSystem {
       strength = 1, isImg2Img = false,
       preciseRefCount = 0,
       chargeOpusFreeRange = false,
+      model,
     } = params
 
-    const pixels = width * height
+    let pixels = width * height
+    if (pixels < 65536) pixels = 65536
 
-    // Opus 免费范围判定：标准分辨率 + 28步以下。
-    // nai5 日限用完后与 NovelAI 配额耗尽一致，跳过免费档并按 Anlas 估算扣点。
-    if (!chargeOpusFreeRange && pixels <= 1048576 && steps <= 28) {
-      // 即使 Opus 免费，精准参考仍有额外费用
-      return preciseRefCount * 5
-    }
+    // 官网：角色参考会取消 Opus 免费档
+    const opusFree = !chargeOpusFreeRange
+      && preciseRefCount <= 0
+      && pixels <= 1048576
+      && steps <= 28
+    if (opusFree) return 0
 
-    // 基础消耗计算
-    let L = Math.ceil((2.951823174884865e-15 * pixels + 5.753298233447344e-7 * pixels * steps) * 1.21)
+    let L = Math.ceil(2.951823174884865e-6 * pixels + 5.753298233447344e-7 * pixels * steps)
 
-    // SMEA/DYN 加成
-    if (smeaDyn) L = Math.ceil(L * 1.4)
-    else if (smea) L = Math.ceil(L * 1.2)
+    // SMEA/DYN 加成写在 ceil 之外，与官网一致
+    if (smeaDyn) L *= 1.4
+    else if (smea) L *= 1.2
 
-    // img2img 强度调整
-    if (isImg2Img) {
-      L = Math.max(Math.ceil(L * strength), 2)
-    }
+    if (this.isNai5Model(model)) L *= 1.5
 
-    // 精准参考额外消耗
+    const resolvedStrength = isImg2Img ? strength : 1
+    L = Math.max(Math.ceil(L * resolvedStrength), 2)
+
+    // 精准参考额外消耗（官网会取消免费档，超额后仍按基础 Anlas 计费）
     L += preciseRefCount * 5
 
     return L
