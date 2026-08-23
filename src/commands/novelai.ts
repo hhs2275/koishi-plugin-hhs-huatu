@@ -1,5 +1,5 @@
 // novelai 主绘图命令（含快捷别名、选项解析）与 upscale 子命令
-import { Context, h, trimSlash } from 'koishi'
+import { Context, h, Session, trimSlash } from 'koishi'
 import { Config, models, orientMap, sampler, scheduler, upscalers } from '../config'
 import { ImageData, StableDiffusionWebUI } from '../types'
 import { clampToNAILimit, download, extractImages, forceDataPrefix, NetworkError } from '../utils'
@@ -70,6 +70,29 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
 
 export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) {
   const { membershipSystem, queueSystem, useFilter, useBackend, thirdParty, noImage, some, step, resolution } = runtime
+  const recentCommandMessages = new Map<string, number>()
+  const commandDedupWindow = 30_000
+
+  // 某些适配器在重连或消息回执异常时，可能会把同一条消息重复投递。
+  // 只使用消息 ID 去重，避免把用户连续发送的相同绘图指令误判为重复。
+  const isDuplicateCommand = (session: Session): boolean => {
+    const messageId = session.messageId
+    if (!messageId) return false
+
+    const now = Date.now()
+    for (const [key, timestamp] of recentCommandMessages) {
+      if (now - timestamp > commandDedupWindow) recentCommandMessages.delete(key)
+    }
+
+    const key = [session.platform, session.selfId, session.channelId, session.userId, messageId].join(':')
+    if (recentCommandMessages.has(key)) {
+      ctx.logger.warn(`检测到重复绘图消息，已忽略：messageId=${messageId}`)
+      return true
+    }
+
+    recentCommandMessages.set(key, now)
+    return false
+  }
 
   // nai4-5 / nai4-5c 别名只认 ASCII 连字符（-），但用户可能输入其他 Unicode 横杠
   // （如 U+2011 ‑、U+2013 –、U+FF0D － 等）。这里在命令解析前把指令首词中的横杠归一化，
@@ -131,6 +154,8 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .option('preciseRefParams', '-p <params:string>')  // 精准参考参数
 
     .action(async ({ session, options, name }, ...prompts) => {
+      if (isDuplicateCommand(session)) return
+
       // 将 prompts 数组转换为字符串
       let input = prompts.join(' ')
 

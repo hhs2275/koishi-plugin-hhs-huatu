@@ -254,7 +254,7 @@ interface ParamConfig {
 export interface Config extends PromptConfig, ParamConfig {
   type: 'token' | 'login' | 'naifu' | 'sd-webui' | 'stable-horde' | 'comfyui'
   token?: string | string[]  // 支持单个token或多个token数组
-  tokenStrategy?: 'round-robin' | 'random' | 'fallback' | 'parallel'  // token使用策略
+  tokenStrategy?: 'round-robin' | 'first-available' | 'random' | 'fallback' | 'parallel'  // token使用策略
   email?: string
   password?: string
   authLv?: Computed<number>
@@ -390,9 +390,18 @@ export const Config = Schema.intersect([
         Schema.object({
           type: Schema.const('token'),
           token: Schema.union([
-            Schema.string().description('授权令牌。'),
-            Schema.array(Schema.string()).description('多个授权令牌（使用令牌池，每个令牌同时仅处理一个任务）')
-          ]).role('secret').required(),
+            Schema.string().role('secret').description('单个授权令牌。'),
+            Schema.array(
+              Schema.string().role('secret').default('')
+            ).role('table').default(['']).description('多个授权令牌。每行填写一个令牌，可直接新增空白行，不需要手写 JSON 引号。'),
+          ]).required(),
+          tokenStrategy: Schema.union([
+            Schema.const('round-robin').description('轮询（推荐：按顺序轮流使用；目标令牌忙时跳过，下一次从后续位置继续）'),
+            Schema.const('first-available').description('首个可用（总是优先前面的空闲令牌，可能让第一个令牌消耗更多）'),
+            Schema.const('random').description('随机（从空闲令牌中随机选择，长期大致均衡但不保证严格轮流）'),
+            Schema.const('fallback').description('回退（兼容旧配置：按首个可用分配；请求失败不会自动换令牌重试）'),
+            Schema.const('parallel').description('并行（兼容旧配置：按空闲令牌并发处理，并发上限受令牌数量限制）'),
+          ]).description('多个授权令牌的使用策略（token 为数组时生效；单个令牌时无影响）').default('round-robin'),
         }),
         Schema.object({
           type: Schema.const('login'),

@@ -30,7 +30,6 @@ export class QueueSystem {
 
   // 重画相关
   private lastRedrawTime = 0
-  private usedTokenIndices: Set<number> = new Set()
   private redrawLock = false
   private redrawWaitQueue: (() => void)[] = []
 
@@ -42,6 +41,11 @@ export class QueueSystem {
 
   // Token管理相关
   private tokenPool: boolean[] = []
+  // tokenPool 使用紧凑槽位，tokenIndices 保留配置数组中的真实下标，
+  // 这样可以忽略配置中为了方便填写而保留的空白行。
+  private tokenIndices: number[] = []
+  // 轮询分配的起始索引。每次成功分配后指向下一个 token。
+  private nextTokenIndex = 0
 
   constructor(
     private ctx: Context,
@@ -53,13 +57,18 @@ export class QueueSystem {
     this.membershipSystem = membershipSystem || null
     // 初始化 Token 池（每个 token 只允许同时一个任务）
     if (Array.isArray(config.token) && config.token.length > 0) {
-      this.tokenPool = new Array(config.token.length).fill(false)
+      this.tokenIndices = config.token
+        .map((token, index) => typeof token === 'string' && token.trim() ? index : -1)
+        .filter(index => index >= 0)
+      this.tokenPool = new Array(this.tokenIndices.length).fill(false)
       this.maxConcurrentTasks = this.tokenPool.length
     } else if (typeof (config as any).token === 'string' && (config as any).token) {
+      this.tokenIndices = [0]
       this.tokenPool = [false]
       this.maxConcurrentTasks = 1
     } else {
       // 非 token 授权模式时，默认串行
+      this.tokenIndices = [0]
       this.tokenPool = [false]
       this.maxConcurrentTasks = 1
     }
@@ -90,38 +99,41 @@ export class QueueSystem {
     }
   }
 
-  // 生成唯一且未被最近使用的 token 索引
-  getUniqueTokenIndex(currentIndex: number, tokenCount: number): number {
-    if (tokenCount <= 1) return 0
-
-    // 如果所有索引都被使用了，清空集合
-    if (this.usedTokenIndices.size >= tokenCount) {
-      this.usedTokenIndices.clear()
-    }
-
-    // 尝试找到一个未使用的索引
-    let newIndex = currentIndex
-    let attempts = 0
-    const maxAttempts = tokenCount * 2 // 设置最大尝试次数，避免死循环
-
-    while (this.usedTokenIndices.has(newIndex) && attempts < maxAttempts) {
-      newIndex = (newIndex + 1) % tokenCount
-      attempts++
-    }
-
-    // 将新索引添加到使用过的集合中
-    this.usedTokenIndices.add(newIndex)
-
-    return newIndex
-  }
-
-  // 从 Token 池中获取一个空闲的 token 索引（并标记为占用）
+  // 从 Token 池中获取一个空闲的 token 索引（并标记为占用）。
+  // 轮询时从 nextTokenIndex 开始查找，因此即使任务是串行执行，
+  // 也会在每次任务之间切换到下一个 token，而不是始终命中 token[0]。
   private acquireTokenIndex(): number | null {
     if (!this.tokenPool.length) return null
-    for (let i = 0; i < this.tokenPool.length; i++) {
-      if (!this.tokenPool[i]) {
-        this.tokenPool[i] = true
-        return i
+
+    const strategy = this.config.tokenStrategy || 'round-robin'
+    if (strategy === 'random') {
+      const available = this.tokenPool
+        .map((busy, slot) => busy ? -1 : slot)
+        .filter(slot => slot >= 0)
+      if (!available.length) return null
+      const slot = available[Math.floor(Math.random() * available.length)]
+      this.tokenPool[slot] = true
+      return this.tokenIndices[slot]
+    }
+
+    if (strategy === 'round-robin') {
+      for (let offset = 0; offset < this.tokenPool.length; offset++) {
+        const slot = (this.nextTokenIndex + offset) % this.tokenPool.length
+        if (!this.tokenPool[slot]) {
+          this.tokenPool[slot] = true
+          this.nextTokenIndex = (slot + 1) % this.tokenPool.length
+          return this.tokenIndices[slot]
+        }
+      }
+      return null
+    }
+
+    // first-available、fallback、parallel 以及未知旧值均保持旧行为：
+    // 从前往后选择第一个空闲 token。
+    for (let slot = 0; slot < this.tokenPool.length; slot++) {
+      if (!this.tokenPool[slot]) {
+        this.tokenPool[slot] = true
+        return this.tokenIndices[slot]
       }
     }
     return null
@@ -131,8 +143,9 @@ export class QueueSystem {
   private releaseTokenIndex(index: number) {
     if (index == null) return
     if (!this.tokenPool.length) return
-    if (index >= 0 && index < this.tokenPool.length) {
-      this.tokenPool[index] = false
+    const slot = this.tokenIndices.indexOf(index)
+    if (slot >= 0) {
+      this.tokenPool[slot] = false
     }
   }
 
