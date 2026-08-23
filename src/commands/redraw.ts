@@ -135,45 +135,11 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
           // 为每次重画命令生成一个唯一的命令ID，用于调试和区分不同的重画命令
           const commandId = Date.now() % 10000  // 使用时间戳后4位作为命令ID
 
-          // 在重画命令一开始，重置 ctx.runtime.currentTokenIndex
-          if (config.tokenStrategy === 'round-robin' && Array.isArray(ctx.config.token)) {
-            if (!ctx.runtime) {
-              ctx.runtime = { currentTokenIndex: 0 }
-            }
-
-            // 记录重画命令开始前的 token 索引
-            const oldTokenIndex = ctx.runtime.currentTokenIndex
-
-            // 检查上一次重画命令的执行时间
-            const lastRedrawTime = queueSystem.getLastRedrawTime()
-            const timeSinceLastRedraw = now - lastRedrawTime
-
-            // 为了避免连续重画命令使用相同的 token，我们使用全局追踪的方式
-            // 1. 如果离上次重画命令时间很短，增加随机性
-            // 2. 使用 getUniqueTokenIndex 函数获取未被最近使用的索引
-            let newTokenIndex
-            if (timeSinceLastRedraw < 5000) {  // 5秒内视为频繁重画
-              // 使用时间差作为偏移量的一部分
-              const timeOffset = timeSinceLastRedraw % ctx.config.token.length
-              const randomOffset = Math.floor(Math.random() * ctx.config.token.length)
-
-              // 从当前索引开始，计算一个新的索引
-              const baseIndex = (oldTokenIndex + timeOffset + randomOffset + commandId) % ctx.config.token.length
-
-              // 使用 getUniqueTokenIndex 确保获取一个未被最近使用的索引
-              newTokenIndex = queueSystem.getUniqueTokenIndex(baseIndex, ctx.config.token.length)
-            } else {
-              // 离上次重画时间较长，使用更简单的方法
-              const randomOffset = Math.floor(Math.random() * ctx.config.token.length)
-              newTokenIndex = (oldTokenIndex + randomOffset + 1) % ctx.config.token.length
-            }
-
-            ctx.runtime.currentTokenIndex = newTokenIndex
-
-            // 更新最后重画时间
+          // 重画任务也统一交给队列分配 token，避免预先计算的索引被队列覆盖。
+          // 轮询、随机和兼容旧配置的策略都由 QueueSystem 作为唯一分配入口处理。
+          if (Array.isArray(ctx.config.token)) {
             queueSystem.setLastRedrawTime(now)
-
-            ctx.logger.debug(`重画命令(${commandId})开始，token 索引从 ${oldTokenIndex} 更新为 ${newTokenIndex}，间隔: ${timeSinceLastRedraw}ms`)
+            ctx.logger.debug(`重画命令(${commandId})开始，token 使用策略: ${config.tokenStrategy || 'round-robin'}`)
           }
 
           // 添加重画任务的函数，用于延迟添加任务到队列
@@ -201,74 +167,13 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
             // 生成任务唯一ID，用于调试和区分不同的重画任务
             const taskUniqueId = commandId * 100 + index  // 命令ID + 任务索引，确保唯一性
 
-            // 为每个重画任务设置特殊处理
+            // 只记录重画元数据；真正的 token 索引由 QueueSystem 在任务开始时分配。
             if (Array.isArray(ctx.config.token)) {
-              if (config.tokenStrategy === 'parallel') {
-                // parallel策略：创建新的runtime状态，确保每个任务都能独立获取token
-                taskSession.runtime = {
-                  currentTokenIndex: undefined,
-                  tokenUsage: {}, // 空对象，避免共享引用
-                  _timeStamp: Date.now() + index,
-                  _taskId: taskUniqueId
-                }
-                ctx.logger.debug(`为重画任务 ${taskUniqueId} 创建独立的session对象，确保能够独立获取token`)
-              } else if (config.tokenStrategy === 'round-robin') {
-                // round-robin策略：为每个任务分配唯一的 token 索引
-                if (ctx.runtime) {
-                  // 为了避免重画任务使用相同的 token，我们为每个任务生成一个唯一的 token 索引
-                  // 计算一个索引偏移量，确保不同任务使用不同的 token
-                  // 使用基于当前 token 索引、任务索引、任务唯一ID 的组合
-                  let forcedTokenIndex
-
-                  if (ctx.config.token.length <= 1) {
-                    // 只有一个 token，直接使用
-                    forcedTokenIndex = 0
-                  } else {
-                    // 计算任务专属的 token 索引
-                    const baseIndex = ctx.runtime.currentTokenIndex
-                    const taskOffset = (index * 3 + taskUniqueId) % ctx.config.token.length
-                    const candidateIndex = (baseIndex + taskOffset) % ctx.config.token.length
-
-                    // 使用队列系统的函数获取唯一索引
-                    forcedTokenIndex = queueSystem.getUniqueTokenIndex(candidateIndex, ctx.config.token.length)
-
-                    ctx.logger.debug(`重画任务 ${taskUniqueId} token索引计算: 基础=${baseIndex}, 任务偏移=${taskOffset}, 最终=${forcedTokenIndex}`)
-                  }
-
-                  // 更新 runtime 对象
-                  taskSession.runtime = {
-                    _timeStamp: Date.now() + index,
-                    _redraw: true,
-                    _forcedTokenIndex: forcedTokenIndex,  // 强制指定 token 索引
-                    _taskIndex: index,                    // 任务索引
-                    _taskId: taskUniqueId                 // 任务唯一ID
-                  }
-
-                  ctx.logger.debug(`为重画任务 ${taskUniqueId} 强制指定 token 索引: ${forcedTokenIndex}`)
-                } else {
-                  taskSession.runtime = {
-                    _timeStamp: Date.now() + index,
-                    _redraw: true,
-                    _taskId: taskUniqueId
-                  }
-                  ctx.logger.debug(`为重画任务 ${taskUniqueId} 创建轮询session对象，将使用下一个可用token`)
-                }
-              } else if (config.tokenStrategy === 'random') {
-                // random策略：不设置currentTokenIndex，每次调用getToken都会随机选择token
-                taskSession.runtime = {
-                  _timeStamp: Date.now() + index,
-                  _redraw: true,
-                  _taskId: taskUniqueId
-                }
-                ctx.logger.debug(`为重画任务 ${taskUniqueId} 创建随机策略session对象，将随机选择token`)
-              } else if (config.tokenStrategy === 'fallback') {
-                // fallback策略：不设置currentTokenIndex，每次都从第一个token开始尝试
-                taskSession.runtime = {
-                  _timeStamp: Date.now() + index,
-                  _redraw: true,
-                  _taskId: taskUniqueId
-                }
-                ctx.logger.debug(`为重画任务 ${taskUniqueId} 创建备用策略session对象，将从第一个token开始尝试`)
+              taskSession.runtime = {
+                _timeStamp: Date.now() + index,
+                _redraw: true,
+                _taskIndex: index,
+                _taskId: taskUniqueId
               }
             }
 
