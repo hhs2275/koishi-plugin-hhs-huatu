@@ -195,7 +195,8 @@ export class MembershipSystem {
    *   M *= sm_dyn ? 1.4 : smea ? 1.2 : 1
    *   V5 再乘 1.5
    *   cost = max(ceil(M * strength), 2)
-   * Opus 免费：无角色参考、像素 ≤ 1048576、步数 ≤ 28 时第一张为 0。
+   * Opus 免费：像素 ≤ 1048576、步数 ≤ 28 时基础生图为 0。
+   * 精准参考（Precise Reference）不取消免费档，只在基础价之外每张 +5。
    */
   calculatePointsCost(params: {
     width: number
@@ -223,12 +224,12 @@ export class MembershipSystem {
     let pixels = width * height
     if (pixels < 65536) pixels = 65536
 
-    // 官网：角色参考会取消 Opus 免费档
+    // 官网 Opus 免费档只看分辨率和步数；精准参考是额外附加费，不取消免费
     const opusFree = !chargeOpusFreeRange
-      && preciseRefCount <= 0
       && pixels <= 1048576
       && steps <= 28
-    if (opusFree) return 0
+    const extraRefCost = preciseRefCount * 5
+    if (opusFree) return extraRefCost
 
     let L = Math.ceil(2.951823174884865e-6 * pixels + 5.753298233447344e-7 * pixels * steps)
 
@@ -241,8 +242,8 @@ export class MembershipSystem {
     const resolvedStrength = isImg2Img ? strength : 1
     L = Math.max(Math.ceil(L * resolvedStrength), 2)
 
-    // 精准参考额外消耗（官网会取消免费档，超额后仍按基础 Anlas 计费）
-    L += preciseRefCount * 5
+    // 精准参考额外消耗：每张参考图 +5，不取消 Opus 免费档
+    L += extraRefCost
 
     return L
   }
