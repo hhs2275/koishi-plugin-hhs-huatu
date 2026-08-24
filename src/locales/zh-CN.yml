@@ -33,7 +33,7 @@ commands:
       noTranslator: 禁用自动翻译
       iterations: 设置绘制次数
       batch: 设置绘制批次大小
-      chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。
+      chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。位置写法：网格 `@B3`，或自由坐标 `@0.35,0.62`（NAI 5 推荐，值域 0~1）
       inpaint: 启用局部重绘模式
       preciseRef: 启用精准参考功能（仅支持 v4.5 模型），可以传6张图片。每张图片额外扣除5点数
       preciseRefParams: 设置精准参考参数（用引号引用起来，下一张图片参数用分号隔开，格式：mode,strength,fidelity，例如：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）mode可选cs（角色+风格），s（仅风格），c（仅角色），strength（0-1），fidelity（0-1），默认cs,1,1

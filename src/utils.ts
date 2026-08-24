@@ -427,16 +427,27 @@ export function forceDataPrefix(url: string, mime = 'image/png') {
 }
 
 /**
- * 将位置字符串（如 "A1" 到 "E5"）转换为坐标
- * 横向: A(-0.4) → B(-0.2) → C(0) → D(+0.2) → E(+0.4)
- * 纵向: 1(-0.4) → 2(-0.2) → 3(0) → 4(+0.2) → 5(+0.4)
+ * 将位置字符串转换为坐标，支持两种格式：
+ * 1. 网格格式（如 "A1" 到 "E5"）：
+ *    横向: A(-0.4) → B(-0.2) → C(0) → D(+0.2) → E(+0.4)
+ *    纵向: 1(-0.4) → 2(-0.2) → 3(0) → 4(+0.2) → 5(+0.4)
+ * 2. 连续坐标格式（如 "0.35,0.62"、"(0.35,0.62)"、"(0.35, 0.62)"）：
+ *    对应 NAI 5 官方网页版/naicmd 的自由拖拽定位方式，值域 [0, 1]，
+ *    旧模型（v4/v4.5）的 API 同样接受该格式
  * @param position 位置字符串，默认为 "C3" (中心点)
- * @returns 坐标对象 { x, y }，值域为 [0.1, 0.9]
+ * @returns 坐标对象 { x, y }，网格格式值域为 [0.1, 0.9]，连续坐标格式值域为 [0, 1]
  */
 export function convertPosition(position: string = 'C3'): { x: number; y: number } {
-  // 验证格式
+  // 连续坐标格式（NAI 5 自由定位）：clamp 到 [0,1]，保留 3 位小数
+  const coordMatch = position.trim().match(/^\(?\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*\)?$/)
+  if (coordMatch) {
+    const clamp = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000
+    return { x: clamp(Number(coordMatch[1])), y: clamp(Number(coordMatch[2])) }
+  }
+
+  // 网格格式验证
   if (!/^[A-E][1-5]$/.test(position)) {
-    throw new Error(`Invalid position: ${position}. Must be A1-E5`)
+    throw new Error(`Invalid position: ${position}. Must be A1-E5 or "x,y" (e.g. "0.35,0.62")`)
   }
 
   // 转换坐标
@@ -466,13 +477,17 @@ export function modelSupportsCharacters(model: string): boolean {
 /**
  * 解析用户友好的 characters 文本格式
  * 格式：prompt@position --uc:negative;prompt2@position2
- * 
+ *
+ * 位置支持两种写法：
+ * - 网格格式：@A1 ~ @E5（如 "1girl, red hair@B3"）
+ * - 连续坐标格式：@x,y 或 @(x,y)（NAI 5 自由定位，如 "1girl@0.35,0.62"、"1boy@(0.7,0.4)"）
+ *
  * 示例：
  * - "1girl, red hair@B3;1boy, blue eyes@D3"
- * - "1girl@B3 --uc:frown;1boy@D3"
+ * - "1girl@0.25,0.7 --uc:frown;1boy@(0.75,0.6)"
  * - "princess, dress@C2 --uc:messy;knight@C4"
  * - 支持中文分号："1girl@B3；1boy@D3"
- * 
+ *
  * @param input 用户输入的字符串
  * @returns Character 数组
  */
@@ -510,13 +525,14 @@ export function parseCharacters(input: string): Array<{ prompt: string; uc?: str
       prompt = charStr.replace(/--uc:[^@]*/, '').trim()
     }
 
-    // 提取位置 @XXX
+    // 提取位置 @XXX —— 支持网格（A1-E5）与连续坐标（x,y / (x,y)）
     let position = ''
-    const posMatch = prompt.match(/@([A-E][1-5])\s*$/)
+    const posPattern = /@([A-E][1-5]|\(?\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?\s*\)?)\s*$/
+    const posMatch = prompt.match(posPattern)
     if (posMatch) {
       position = posMatch[1]
       // 移除 @XXX 部分
-      prompt = prompt.replace(/@[A-E][1-5]\s*$/, '').trim()
+      prompt = prompt.replace(posPattern, '').trim()
     }
 
     // 清理多余的空格和逗号

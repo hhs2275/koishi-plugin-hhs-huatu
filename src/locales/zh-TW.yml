@@ -33,7 +33,7 @@ commands:
       noTranslator: 禁用自動翻譯
       iterations: 設定繪製次數
       batch: 設定繪製批次大小
-      chars: 設定角色提示詞，用引號將角色提示詞括起來，用分號 `;` 或 `；` 分隔角色。
+      chars: 設定角色提示詞，用引號將角色提示詞括起來，用分號 `;` 或 `；` 分隔角色。位置寫法：網格 `@B3`，或自由座標 `@0.35,0.62`（NAI 5 推薦，值域 0~1）
       inpaint: 啟用局部重繪模式
       smea: 啟用 SMEA
       smeaDyn: 啟用 DYN
