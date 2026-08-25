@@ -55,23 +55,40 @@ export class QueueSystem {
     initialTokenUsage?: Dict<boolean>
   ) {
     this.membershipSystem = membershipSystem || null
-    // 初始化 Token 池（每个 token 只允许同时一个任务）
-    if (Array.isArray(config.token) && config.token.length > 0) {
-      this.tokenIndices = config.token
+    // 初始化 Token 池（每个 token 只允许同时一个任务）。
+    // 配置可能在插件运行期间从多 Token 改成单 Token，具体同步逻辑统一由
+    // syncTokenPool() 处理，避免热更新后仍保留旧的并发槽位。
+    this.syncTokenPool()
+  }
+
+  /**
+   * 根据当前配置同步 Token 池。
+   *
+   * 需要保留仍在执行中的槽位状态：如果双 Token 运行期间切换成单 Token，
+   * 被移除的槽位对应的旧任务仍可能在运行，不能因为重建数组就立刻复用剩余
+   * 槽位，否则两个任务会再次共用同一个 Token。processQueue() 还会结合
+   * processingTasks 做总量保护，等所有旧任务结束后再恢复单 Token 串行。
+   */
+  public syncTokenPool(): void {
+    const previousIndices = this.tokenIndices
+    const previousPool = this.tokenPool
+
+    let nextIndices: number[]
+    if (Array.isArray(this.config.token) && this.config.token.length > 0) {
+      nextIndices = this.config.token
         .map((token, index) => typeof token === 'string' && token.trim() ? index : -1)
         .filter(index => index >= 0)
-      this.tokenPool = new Array(this.tokenIndices.length).fill(false)
-      this.maxConcurrentTasks = this.tokenPool.length
-    } else if (typeof (config as any).token === 'string' && (config as any).token) {
-      this.tokenIndices = [0]
-      this.tokenPool = [false]
-      this.maxConcurrentTasks = 1
     } else {
-      // 非 token 授权模式时，默认串行
-      this.tokenIndices = [0]
-      this.tokenPool = [false]
-      this.maxConcurrentTasks = 1
+      // 单 Token、非 Token 授权模式以及空配置都保持串行行为。
+      nextIndices = [0]
     }
+
+    this.tokenIndices = nextIndices
+    this.tokenPool = nextIndices.map((index) => {
+      const previousSlot = previousIndices.indexOf(index)
+      return previousSlot >= 0 ? previousPool[previousSlot] : false
+    })
+    this.maxConcurrentTasks = this.tokenPool.length
   }
 
   // 获取锁
@@ -162,9 +179,16 @@ export class QueueSystem {
   async processQueue() {
     if (this.taskQueue.length === 0) return
 
+    // 配置可能通过 Koishi 热更新，此时构造函数中的 Token 池已经过期。
+    this.syncTokenPool()
+
     // 按照 Token 池的空闲数量并行启动任务
     let dispatchCount = 0
     while (this.taskQueue.length > 0) {
+      // 配置从多 Token 切换为单 Token 时，旧槽位可能还有任务在运行，
+      // 不能只看重建后的 tokenPool，否则剩余槽位会被提前再次占用。
+      if (this.processingTasks >= this.maxConcurrentTasks) break
+
       const tokenIndex = this.acquireTokenIndex()
       if (tokenIndex == null) break
 

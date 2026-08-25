@@ -87,6 +87,9 @@ export function createRuntime(ctx: Context, config: Config): Runtime {
   ctx.accept(['token', 'type', 'email', 'password'], () => {
     tokenTask = null
     // 不再维护 currentTokenIndex（使用 token 池并依赖 _forcedTokenIndex）
+    // Token 配置可以在 Koishi 中热更新，必须同步队列的并发槽位。
+    queueSystem?.syncTokenPool()
+    queueSystem?.processQueue()
   })
 
   const useFilter = (filter: Computed<boolean>): HiddenCallback => (session) => {
