@@ -1295,6 +1295,12 @@ export class MembershipSystem {
 
     this.ensureUserData(userId)
 
+    // 跨零点完成的任务：累加前先按日期滚动清零上一日的计数。
+    // 否则下方 lastUsed = now 会把「最后使用日」更新为新的一天，
+    // checkAndResetDailyUsage 的惰性重置（对比 lastUsed 日期）当天不再触发，
+    // 昨天的 dailyUsage / nai5DailyUsage 会被整日带入新的一天。
+    this.checkAndResetDailyUsage(userId)
+
     this.userData[userId].dailyUsage += drawCount
     this.userData[userId].lastUsed = now
     if (this.isNai5Model(model)) {
