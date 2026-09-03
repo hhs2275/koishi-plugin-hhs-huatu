@@ -1,9 +1,13 @@
 import { Context, Dict, Session } from 'koishi'
 import { Config, modelMap } from './config'
-import { UserData, HhsHuatuUser } from './types'
+import { UserData, MembershipCard, TierBenefit, HhsHuatuUser } from './types'
 import { resolve } from 'path'
 import { readFile } from 'fs/promises'
 import { isNovelAIV5Model } from './services/opusQuota'
+
+/** 会员等级上下限 */
+export const MIN_TIER = 1
+export const MAX_TIER = 5
 
 export class MembershipSystem {
   // 用户数据内存缓存
@@ -82,6 +86,19 @@ export class MembershipSystem {
       autoInc: true,
       unique: ['visitorId'],
     })
+    // 会员卡表（多卡叠加制）。
+    // 注意：minato 的 unique 配置语义是「逐列各自唯一」而非复合唯一，会导致不同用户无法持有同等级卡，
+    // 因此这里不声明 unique；(visitorId, tier) 的唯一性由应用层保证（grantMembershipCard 每等级仅一张卡）。
+    this.ctx.model.extend('hhs_huatu_membership_cards', {
+      id: 'unsigned',
+      visitorId: 'string',
+      tier: 'unsigned',
+      expiry: 'unsigned',
+      grantedAt: 'unsigned',
+      grantedBy: 'string',
+    }, {
+      autoInc: true,
+    })
   }
 
   // 从数据库加载数据到内存缓存
@@ -90,7 +107,7 @@ export class MembershipSystem {
       if (this.config.debugLog) this.ctx.logger.info('会员系统未启用，跳过从数据库加载用户数据')
       return;
     }
-    
+
     try {
       const rows = await this.ctx.database.get('hhs_huatu_user', {})
       let loadedCount = 0;
@@ -112,8 +129,101 @@ export class MembershipSystem {
         }
       }
       this.ctx.logger.info(`会员系统数据从数据库加载成功，共 ${loadedCount} 条记录`)
+
+      // 加载会员卡数据
+      await this.loadCardsFromDB()
+      // 存量会员迁移：isMember=true 但没有任何会员卡的用户 → 生成 Lv1 卡
+      await this.migrateLegacyMembers()
     } catch (err) {
       this.ctx.logger.error('从数据库加载会员系统数据失败', err)
+    }
+  }
+
+  // 从数据库加载会员卡到内存
+  private async loadCardsFromDB() {
+    try {
+      const cardRows = await this.ctx.database.get('hhs_huatu_membership_cards', {})
+      let cardCount = 0
+      for (const row of cardRows) {
+        if (!this.userData[row.visitorId]) continue
+        if (!this.userData[row.visitorId].cards) this.userData[row.visitorId].cards = []
+        this.userData[row.visitorId].cards.push({
+          tier: row.tier,
+          expiry: row.expiry,
+          grantedAt: row.grantedAt,
+          grantedBy: row.grantedBy,
+        })
+        cardCount++
+      }
+      this.ctx.logger.info(`会员卡数据加载成功，共 ${cardCount} 张卡`)
+    } catch (err) {
+      this.ctx.logger.error('加载会员卡数据失败', err)
+    }
+  }
+
+  /**
+   * 存量会员迁移（幂等）：isMember=true 且名下无卡 → 按原 membershipExpiry 生成 Lv1 卡。
+   * Lv1 权益直接沿用现有全局配置字段，迁移后行为与升级前逐项一致。
+   */
+  private async migrateLegacyMembers() {
+    let migrated = 0
+    for (const userId in this.userData) {
+      const user = this.userData[userId]
+      if (user.isMember && (!user.cards || user.cards.length === 0)) {
+        user.cards = [{
+          tier: 1,
+          expiry: user.membershipExpiry,
+          grantedAt: Date.now(),
+          grantedBy: 'migration',
+        }]
+        migrated++
+      }
+    }
+    if (migrated > 0) {
+      await this.saveAllCards()
+      this.ctx.logger.info(`会员等级迁移完成：已为 ${migrated} 位存量会员生成 Lv1 会员卡`)
+    }
+  }
+
+  // 将指定用户的所有卡同步到数据库（先删后建，卡数量小，简单可靠）
+  private async syncCardsToDB(userId: string) {
+    try {
+      const user = this.userData[userId]
+      if (!user) return
+      const cards = user.cards || []
+      await this.ctx.database.remove('hhs_huatu_membership_cards', { visitorId: userId })
+      for (const card of cards) {
+        await this.ctx.database.create('hhs_huatu_membership_cards', {
+          visitorId: userId,
+          tier: card.tier,
+          expiry: card.expiry,
+          grantedAt: card.grantedAt,
+          grantedBy: card.grantedBy || '',
+        })
+      }
+    } catch (err) {
+      this.ctx.logger.error(`同步用户 ${userId} 的会员卡到数据库失败`, err)
+    }
+  }
+
+  // 将内存中全部用户的卡写回数据库（逐用户先删后建，仅在迁移/批量导入等低频场景调用）
+  private async saveAllCards() {
+    try {
+      for (const userId in this.userData) {
+        const cards = this.userData[userId].cards || []
+        await this.ctx.database.remove('hhs_huatu_membership_cards', { visitorId: userId })
+        for (const card of cards) {
+          await this.ctx.database.create('hhs_huatu_membership_cards', {
+            visitorId: userId,
+            tier: card.tier,
+            expiry: card.expiry,
+            grantedAt: card.grantedAt,
+            grantedBy: card.grantedBy || '',
+          })
+        }
+      }
+    } catch (err) {
+      this.ctx.logger.error('批量保存会员卡数据失败', err)
     }
   }
 
@@ -183,6 +293,204 @@ export class MembershipSystem {
     } catch (err) {
       this.ctx.logger.error('批量保存会员系统数据失败', err)
     }
+  }
+
+  // ========== 会员卡与等级制度 ==========
+
+  // 获取用户会员卡列表（确保已初始化）
+  getCards(userId: string): MembershipCard[] {
+    this.ensureUserData(userId)
+    if (!this.userData[userId].cards) this.userData[userId].cards = []
+    return this.userData[userId].cards
+  }
+
+  // 获取用户当前有效卡（expiry > now）
+  getValidCards(userId: string): MembershipCard[] {
+    const now = Date.now()
+    return this.getCards(userId).filter(card => card.expiry > now)
+  }
+
+  // 计算生效等级：有效卡中的最高等级；无有效卡返回 0（非会员）
+  private computeActiveTier(cards: MembershipCard[]): number {
+    const now = Date.now()
+    let max = 0
+    for (const card of cards) {
+      if (card.expiry > now && card.tier > max) max = card.tier
+    }
+    return max
+  }
+
+  /**
+   * 获取用户当前生效等级（0 = 非会员，1-5）。
+   * tierEnabled 关闭时高等级卡不产生权益：生效等级一律视为 Lv1（或非会员 0）。
+   * 内部通过 checkAndResetDailyUsage 维护 isMember / membershipExpiry 冗余字段。
+   */
+  getActiveTier(userId: string): number {
+    this.checkAndResetDailyUsage(userId)
+    const tier = this.computeActiveTier(this.userData[userId]?.cards || [])
+    return this.config.tierEnabled === false && tier > 1 ? 1 : tier
+  }
+
+  /**
+   * 获取指定等级的权益。
+   * Lv1 = 现有全局会员配置字段（兼容层）；Lv2-Lv5 = tierBenefits 配置；越界/缺失时回落 Lv1 数值。
+   */
+  getTierBenefit(tier: number): TierBenefit {
+    const lv1: TierBenefit = {
+      tier: 1,
+      nai5DailyLimit: this.config.memberNai5DailyLimit || 0,
+      pointsRefresh: this.config.pointsRefreshAmount || 200,
+      dailyLimit: this.config.memberDailyLimit || 0,
+      cooldown: this.config.memberCooldown || 0,
+    }
+    if (!tier || tier <= 1) return lv1
+    const found = (this.config.tierBenefits || []).find(b => b.tier === tier)
+    if (!found) return { ...lv1, tier }
+    return {
+      tier,
+      nai5DailyLimit: found.nai5DailyLimit || 0,
+      pointsRefresh: found.pointsRefresh ?? lv1.pointsRefresh,
+      dailyLimit: found.dailyLimit || 0,
+      cooldown: found.cooldown || 0,
+    }
+  }
+
+  // 获取用户当前生效档位的权益；非会员返回 null
+  getMemberBenefit(userId: string): TierBenefit | null {
+    const tier = this.getActiveTier(userId)
+    if (tier <= 0) return null
+    return this.getTierBenefit(tier)
+  }
+
+  /**
+   * 授予/续费会员卡。
+   * - 同等级存在有效卡 → 时长叠加；该等级无有效卡 → 新增/替换该等级卡
+   * - **低级卡联动**：授予/续费 LvN 时，该用户名下所有更低等级的有效卡同步延长相同天数（保证高档到期后低档衔接）
+   * - **升档补差额**：周期刷新模式下，已是会员且升到更高档时，按新旧档位刷新量的「差额」累加补点（用户已充值/已获点数不受影响）
+   * - 用户此前没有任何有效卡（首次成为会员）→ 按所授等级初始化点数（periodic 用该档 pointsRefresh，permanent 用全局 pointsDefault）
+   * - tierEnabled 关闭时 Lv2+ 授予被拒绝（等级功能未启用）
+   * 返回 { renewed, expiry, tier }
+   */
+  async grantMembershipCard(userId: string, tier: number, days: number, grantedBy?: string): Promise<{ renewed: boolean; expiry: number; tier: number }> {
+    this.ensureUserData(userId)
+    const user = this.userData[userId]
+    const now = Date.now()
+    let safeTier = Math.min(Math.max(Math.round(tier), MIN_TIER), MAX_TIER)
+    if (safeTier > 1 && this.config.tierEnabled === false) {
+      safeTier = 1 // 等级功能未启用，回落 Lv1
+    }
+    const durationMs = days * 24 * 60 * 60 * 1000
+    const prevTier = this.getActiveTier(userId)
+    const wasActiveMember = prevTier > 0
+
+    const cards = this.getCards(userId)
+    const existing = cards.find(card => card.tier === safeTier && card.expiry > now)
+    let renewed = false
+    if (existing) {
+      existing.expiry += durationMs
+      renewed = true
+    } else {
+      const newCard: MembershipCard = { tier: safeTier, expiry: now + durationMs, grantedAt: now, grantedBy }
+      const idx = cards.findIndex(card => card.tier === safeTier)
+      if (idx >= 0) cards[idx] = newCard
+      else cards.push(newCard)
+    }
+
+    // 低级卡联动：更低等级的有效卡同步延长相同天数（tierEnabled 关闭时不延长，避免卡时长被隐性修改）
+    if (this.config.tierEnabled !== false) {
+      let extended = 0
+      for (const card of cards) {
+        if (card.tier < safeTier && card.expiry > now) {
+          card.expiry += durationMs
+          extended++
+        }
+      }
+      if (extended > 0) {
+        this.ctx.logger.info(`[会员系统] 已同步延长用户 ${userId} 的 ${extended} 张更低等级会员卡 ${days} 天`)
+      }
+    }
+
+    // 重算冗余字段（isMember / membershipExpiry / dailyLimit）
+    this.checkAndResetDailyUsage(userId)
+
+    // 点数处理（已开点数系统时）
+    if (this.config.pointsEnabled) {
+      if (!wasActiveMember) {
+        // 首次成为会员 → 按所授等级初始化
+        if (this.config.pointsMode === 'periodic') {
+          const refreshAmount = this.getTierBenefit(safeTier).pointsRefresh
+          user.points = refreshAmount
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 首次成为 Lv${safeTier} 会员，点数已初始化为 ${refreshAmount}`)
+        } else if (!user.points) {
+          user.points = this.config.pointsDefault || 200
+        }
+      } else if (this.config.pointsMode === 'periodic' && safeTier > prevTier) {
+        // 升档 → 按档位刷新量「差额」补点（累加而非置值，用户已充值/已获的点数不受影响）
+        // 例：Lv1(200) → Lv2(1400) 差额 1200，用户余额 5000 → 6200
+        const newRefresh = this.getTierBenefit(safeTier).pointsRefresh
+        const oldRefresh = this.getTierBenefit(prevTier).pointsRefresh
+        const diff = newRefresh - oldRefresh
+        if (diff > 0) {
+          const before = user.points || 0
+          user.points = before + diff
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 升级至 Lv${safeTier}，按档位差额补点 +${diff}（${before} → ${before + diff}）`)
+        }
+      }
+    }
+
+    await this.syncUserToDB(userId)
+    await this.syncCardsToDB(userId)
+    this.ctx.logger.info(`[会员系统] 已为用户 ${userId} ${renewed ? '续费' : '授予'} Lv${safeTier} 会员卡 ${days} 天${grantedBy ? `（操作人：${grantedBy}）` : ''}`)
+    return { renewed, expiry: cards.find(card => card.tier === safeTier)!.expiry, tier: safeTier }
+  }
+
+  /**
+   * 取消会员卡。
+   * - tier 缺省 → 取消全部卡（含过期卡）
+   * - tier 指定 → 仅取消该等级卡
+   * 全部取消后用户降为非会员（复用现有降级规则：周期模式下点数清零）。
+   */
+  async cancelMembershipCards(userId: string, tier?: number): Promise<{ removed: number; remainingTier: number }> {
+    const user = this.userData[userId]
+    if (!user) return { removed: 0, remainingTier: 0 }
+
+    const cards = this.getCards(userId)
+    const before = cards.length
+    const rest = tier ? cards.filter(card => card.tier !== tier) : []
+    user.cards = rest
+    const removed = before - rest.length
+
+    const wasMember = user.isMember
+    // 重算冗余字段与降级处理
+    this.checkAndResetDailyUsage(userId)
+
+    if (!user.isMember && wasMember) {
+      // 与现有取消会员行为保持一致
+      user.membershipExpiry = 0
+      user.dailyLimit = this.config.nonMemberDailyLimit
+      if (this.config.pointsEnabled && this.config.pointsMode === 'periodic' && !this.config.pointsRefreshIncludeNonMember) {
+        user.points = 0
+      }
+      this.ctx.logger.info(`[会员系统] 用户 ${userId} 的全部会员卡已被取消，降为非会员`)
+    }
+
+    if (removed > 0) {
+      await this.syncUserToDB(userId)
+      await this.syncCardsToDB(userId)
+      this.ctx.logger.info(`[会员系统] 已取消用户 ${userId} 的 ${removed} 张会员卡${tier ? `（Lv${tier}）` : ''}`)
+    }
+    return { removed, remainingTier: this.getActiveTier(userId) }
+  }
+
+  // 统计各等级有效持卡人数（按生效等级统计，一名用户只计入其最高档；tierEnabled 关闭时全部计入 Lv1）
+  getActiveTierStats(): Dict<number> {
+    const stats: Dict<number> = Object.create(null)
+    for (const userId in this.userData) {
+      let tier = this.computeActiveTier(this.userData[userId].cards || [])
+      if (tier > 1 && this.config.tierEnabled === false) tier = 1
+      if (tier > 0) stats[tier] = (stats[tier] || 0) + 1
+    }
+    return stats
   }
 
   // ========== 点数计算相关 ==========
@@ -310,9 +618,10 @@ export class MembershipSystem {
   }
 
   /**
-   * 批量给所有用户加减点数
+   * 批量给所有用户加减点数。
+   * @param tierFilter 指定生效等级时仅操作该等级会员；缺省对所有（会员）操作
    */
-  async addPointsToAll(amount: number, membersOnly: boolean = true): Promise<{ count: number; message: string }> {
+  async addPointsToAll(amount: number, membersOnly: boolean = true, tierFilter?: number): Promise<{ count: number; message: string }> {
     if (!this.config.pointsEnabled) {
       return { count: 0, message: '点数控制未启用' }
     }
@@ -327,6 +636,11 @@ export class MembershipSystem {
         continue
       }
 
+      // 按生效等级过滤
+      if (tierFilter !== undefined) {
+        if (this.getActiveTier(userId) !== tierFilter) continue
+      }
+
       user.points = Math.max((user.points || 0) + amount, 0)
       updatedCount++
     }
@@ -336,6 +650,7 @@ export class MembershipSystem {
     }
 
     const action = amount >= 0 ? '增加' : '扣除'
+    const scope = tierFilter !== undefined ? `Lv${tierFilter} 会员` : (membersOnly ? '会员' : '用户')
     const message = updatedCount > 0
       ? `✅ 成功为 ${updatedCount} 位用户${action} ${Math.abs(amount)} 点数`
       : `⚠️ 没有符合条件的用户`
@@ -344,29 +659,36 @@ export class MembershipSystem {
   }
 
   /**
-   * 刷新点数（定期任务）
+   * 刷新点数（定期任务 / 手动触发）。
+   * 等级制度下按刷新时刻的生效等级取刷新量：Lv1 = pointsRefreshAmount，Lv2-Lv5 = 各档 pointsRefresh；
+   * 非会员若在刷新范围内，刷为 Lv1 档值（与现有行为一致）。
+   * @param tierFilter 指定生效等级时仅刷新该等级会员；缺省刷新全部范围
    */
-  async refreshPoints(): Promise<{ count: number; message: string }> {
+  async refreshPoints(tierFilter?: number): Promise<{ count: number; message: string }> {
     if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') {
       return { count: 0, message: '点数刷新未启用或不是周期模式' }
     }
 
     let refreshedCount = 0
     const now = Date.now()
-    const refreshAmount = this.config.pointsRefreshAmount || 200
 
     for (const userId in this.userData) {
       const user = this.userData[userId]
 
+      let tier = this.computeActiveTier(user.cards || [])
+      if (tier > 1 && this.config.tierEnabled === false) tier = 1
+      const isActive = tier > 0
+
       // 检查是否在刷新范围内
-      if (!this.config.pointsRefreshIncludeNonMember) {
-        // 仅会员：必须是有效会员
-        if (!user.isMember || user.membershipExpiry < now) {
-          continue
-        }
+      if (!this.config.pointsRefreshIncludeNonMember && !isActive) {
+        continue
       }
 
-      user.points = refreshAmount
+      // 按生效等级过滤
+      if (tierFilter !== undefined && tier !== tierFilter) continue
+
+      // 按生效等级取刷新量；非会员（范围包含时）刷为 Lv1 档值
+      user.points = this.getTierBenefit(tier > 0 ? tier : 1).pointsRefresh
       refreshedCount++
     }
 
@@ -377,8 +699,9 @@ export class MembershipSystem {
       await this.saveUserData()
     }
 
+    const scope = tierFilter !== undefined ? `Lv${tierFilter} 会员` : '用户'
     const message = refreshedCount > 0
-      ? `✅ 点数刷新完成，共刷新 ${refreshedCount} 位用户的点数为 ${refreshAmount}`
+      ? `✅ 点数刷新完成，共刷新 ${refreshedCount} 位${scope}的点数（按各自生效等级）`
       : '⚠️ 没有符合条件的用户需要刷新点数'
 
     this.ctx.logger.info(message)
@@ -402,7 +725,10 @@ export class MembershipSystem {
   }
 
   /**
-   * 从 JSON 文件导入数据到数据库
+   * 从 JSON 文件导入数据到数据库。
+   * 支持两种格式：
+   * - 旧格式：isMember + membershipExpiry → 自动生成 Lv1 卡
+   * - 新格式：cards: [{ tier, expiry, grantedAt?, grantedBy? }]
    */
   async importFromJson(filePath?: string): Promise<{ success: number; failed: number; message: string }> {
     const importPath = filePath || resolve(this.ctx.baseDir, 'data/hhs-huatu-import/hhs-huatu-user-data.json')
@@ -424,16 +750,40 @@ export class MembershipSystem {
           const user = jsonData[userId]
           const defaultPoints = this.config.pointsDefault || 200
 
+          // 解析会员卡：优先使用新格式 cards，否则从 isMember + membershipExpiry 生成 Lv1 卡
+          let cards: MembershipCard[] = []
+          if (Array.isArray(user.cards) && user.cards.length > 0) {
+            cards = user.cards
+              .filter((card: any) => card && typeof card.tier === 'number' && typeof card.expiry === 'number')
+              .map((card: any) => ({
+                tier: Math.min(Math.max(Math.round(card.tier), MIN_TIER), MAX_TIER),
+                expiry: card.expiry,
+                grantedAt: card.grantedAt || Date.now(),
+                grantedBy: card.grantedBy || 'import',
+              }))
+          } else if (user.isMember) {
+            cards = [{ tier: 1, expiry: user.membershipExpiry || 0, grantedAt: Date.now(), grantedBy: 'import' }]
+          }
+
+          // 周期模式下的初始点数：取生效等级的刷新量；无有效会员卡则给 0
+          const now = Date.now()
+          const activeTier = this.computeActiveTier(cards)
+          const importedPoints = user.points !== undefined
+            ? user.points
+            : (activeTier > 0
+              ? (this.config.pointsMode === 'periodic' ? this.getTierBenefit(activeTier).pointsRefresh : defaultPoints)
+              : 0)
+
           this.userData[userId] = {
-            isMember: user.isMember || false,
-            membershipExpiry: user.membershipExpiry || 0,
+            isMember: activeTier > 0,
+            membershipExpiry: activeTier > 0 ? Math.max(...cards.filter(c => c.expiry > now).map(c => c.expiry)) : (user.membershipExpiry || 0),
             dailyUsage: user.dailyUsage || 0,
             lastUsed: user.lastUsed || 0,
-            dailyLimit: user.dailyLimit || this.config.nonMemberDailyLimit,
+            dailyLimit: activeTier > 0 ? this.getTierBenefit(activeTier).dailyLimit : this.config.nonMemberDailyLimit,
             lastDrawTime: user.lastDrawTime || 0,
-            // 导入时如果是会员，给予默认点数；否则给 0
-            points: user.points !== undefined ? user.points : (user.isMember ? defaultPoints : 0),
+            points: importedPoints,
             nai5DailyUsage: user.nai5DailyUsage || 0,
+            cards,
           }
           success++
         } catch (err) {
@@ -445,6 +795,7 @@ export class MembershipSystem {
       // 批量保存到数据库
       if (success > 0) {
         await this.saveUserData()
+        await this.saveAllCards()
       }
 
       return {
@@ -482,12 +833,13 @@ export class MembershipSystem {
     return delay
   }
 
-  // 清理过期会员信息
+  // 清理过期会员信息（按卡粒度：只删过期卡；名下已无任何有效卡的用户按原规则删除）
   async cleanupExpiredMembers() {
     if (!this.config.membershipEnabled || !this.config.memberCleanupEnabled) return
 
     const now = Date.now()
     let cleanedMemberCount = 0
+    let cleanedCardCount = 0
     let cleanedNonMemberCount = 0
 
     // 计算非会员的不活跃阈值时间
@@ -495,22 +847,40 @@ export class MembershipSystem {
 
     for (const userId in this.userData) {
       const user = this.userData[userId]
+      const cards = user.cards || []
+      const validCards = cards.filter(card => card.expiry > now)
 
-      // 检查是否为过期会员
-      if (user.isMember && user.membershipExpiry < now) {
-        // 删除已过期的会员信息
+      // 有效会员：修剪过期卡后保留用户行
+      if (validCards.length > 0) {
+        if (validCards.length < cards.length) {
+          user.cards = validCards
+          try {
+            await this.syncCardsToDB(userId)
+          } catch (err) {
+            this.ctx.logger.error(`清理用户 ${userId} 的过期卡失败`, err)
+          }
+          cleanedCardCount++
+          this.ctx.logger.info(`已清理用户 ${userId} 的过期会员卡（保留 Lv${Math.max(...validCards.map(c => c.tier))}）`)
+        }
+        continue
+      }
+
+      // 无任何有效卡：
+      const wasMember = user.isMember || cards.length > 0
+
+      if (wasMember) {
+        // 过期会员（名下卡已全部过期，或旧数据的 isMember 标记）→ 删除用户行
         delete this.userData[userId]
-        // 从数据库中也删除
         try {
           await this.ctx.database.remove('hhs_huatu_user', { visitorId: userId })
+          await this.ctx.database.remove('hhs_huatu_membership_cards', { visitorId: userId })
         } catch (err) {
           this.ctx.logger.error(`从数据库删除用户 ${userId} 失败`, err)
         }
         cleanedMemberCount++
         this.ctx.logger.info(`已清理过期会员信息: ${userId}`)
-      }
-      // 检查是否需要清理非会员
-      else if (!user.isMember && this.config.cleanupNonMembers) {
+      } else if (this.config.cleanupNonMembers) {
+        // 非会员：按不活跃策略清理
         let shouldCleanup = false
 
         if (this.config.nonMemberInactiveDays === 0) {
@@ -527,6 +897,7 @@ export class MembershipSystem {
           delete this.userData[userId]
           try {
             await this.ctx.database.remove('hhs_huatu_user', { visitorId: userId })
+            await this.ctx.database.remove('hhs_huatu_membership_cards', { visitorId: userId })
           } catch (err) {
             this.ctx.logger.error(`从数据库删除非会员 ${userId} 失败`, err)
           }
@@ -536,16 +907,16 @@ export class MembershipSystem {
       }
     }
 
-    const totalCleaned = cleanedMemberCount + cleanedNonMemberCount
+    const totalCleaned = cleanedMemberCount + cleanedCardCount + cleanedNonMemberCount
 
     if (totalCleaned > 0) {
-      this.ctx.logger.info(`用户信息清理完成，共清理 ${totalCleaned} 条记录（过期会员: ${cleanedMemberCount}，非会员: ${cleanedNonMemberCount}）`)
+      this.ctx.logger.info(`用户信息清理完成，共处理 ${totalCleaned} 条（过期会员: ${cleanedMemberCount}，过期卡: ${cleanedCardCount}，非会员: ${cleanedNonMemberCount}）`)
     } else {
       if (this.config.debugLog) this.ctx.logger.info('用户信息清理完成，无需清理的记录')
     }
   }
 
-  // 检查并提醒即将到期的会员
+  // 检查并提醒即将到期的会员（按卡粒度，每张即将到期的卡单独提醒）
   async checkAndRemindExpiringMembers() {
     if (!this.config.membershipEnabled || !this.config.memberExpiryReminderEnabled) return
 
@@ -556,27 +927,28 @@ export class MembershipSystem {
 
     const now = Date.now()
     const reminderThreshold = this.config.memberReminderHours * 60 * 60 * 1000
-    const expiringMembers: Array<{ userId: string; remainingHours: number }> = []
+    const expiringMembers: Array<{ userId: string; tier: number; remainingHours: number; expiry: number }> = []
 
     for (const userId in this.userData) {
       const user = this.userData[userId]
-
-      if (user.isMember && user.membershipExpiry > now) {
-        const remainingTime = user.membershipExpiry - now
-        if (remainingTime <= reminderThreshold) {
-          const remainingHours = Math.ceil(remainingTime / (60 * 60 * 1000))
-          expiringMembers.push({ userId, remainingHours })
+      for (const card of user.cards || []) {
+        if (card.expiry > now) {
+          const remainingTime = card.expiry - now
+          if (remainingTime <= reminderThreshold) {
+            const remainingHours = Math.ceil(remainingTime / (60 * 60 * 1000))
+            expiringMembers.push({ userId, tier: card.tier, remainingHours, expiry: card.expiry })
+          }
         }
       }
     }
 
     if (expiringMembers.length > 0) {
-      this.ctx.logger.info(`发现 ${expiringMembers.length} 位会员即将到期，将发送到配置的群组`)
+      this.ctx.logger.info(`发现 ${expiringMembers.length} 张会员卡即将到期，将发送到配置的群组`)
 
-      let message = '【会员到期提醒】\n以下会员即将到期：\n\n'
+      let message = '【会员到期提醒】\n以下会员卡即将到期：\n\n'
       expiringMembers.forEach((member, index) => {
-        const expireDate = new Date(this.userData[member.userId].membershipExpiry).toLocaleString()
-        message += `${index + 1}. <at id="${member.userId}"/> \n   剩余时间: ${member.remainingHours} 小时\n   到期时间: ${expireDate}\n\n`
+        const expireDate = new Date(member.expiry).toLocaleString()
+        message += `${index + 1}. <at id="${member.userId}"/> 的 Lv${member.tier} 会员卡\n   剩余时间: ${member.remainingHours} 小时\n   到期时间: ${expireDate}\n\n`
       })
 
       for (const groupId of this.config.memberReminderGroups) {
@@ -692,8 +1064,9 @@ export class MembershipSystem {
     }
   }
 
-  // 给所有会员增加天数
-  async addDaysToAllMembers(days: number): Promise<{ success: boolean; count: number; message: string }> {
+  // 给所有有效会员卡增加天数（按卡粒度，每张有效卡独立延长）。
+  // @param tierFilter 指定生效等级时仅操作该等级会员；缺省操作全部会员
+  async addDaysToAllMembers(days: number, tierFilter?: number): Promise<{ success: boolean; count: number; message: string }> {
     if (!this.config.membershipEnabled) {
       return { success: false, count: 0, message: '会员系统未启用' }
     }
@@ -705,20 +1078,30 @@ export class MembershipSystem {
     for (const userId in this.userData) {
       const user = this.userData[userId]
 
-      if (user.isMember && user.membershipExpiry > now) {
-        user.membershipExpiry += daysInMs
-        updatedCount++
-        this.ctx.logger.info(`已为会员 ${userId} 增加 ${days} 天，到期时间：${new Date(user.membershipExpiry).toLocaleString()}`)
+      // 按生效等级过滤
+      if (tierFilter !== undefined && this.getActiveTier(userId) !== tierFilter) continue
+
+      let touched = false
+      for (const card of user.cards || []) {
+        if (card.expiry > now) {
+          card.expiry += daysInMs
+          updatedCount++
+          touched = true
+        }
+      }
+      if (touched) {
+        // 重算冗余字段（生效卡到期时间可能变化）
+        this.checkAndResetDailyUsage(userId)
+        await this.syncUserToDB(userId)
+        await this.syncCardsToDB(userId)
+        this.ctx.logger.info(`已为用户 ${userId} 的全部有效会员卡增加 ${days} 天`)
       }
     }
 
-    if (updatedCount > 0) {
-      await this.saveUserData()
-    }
-
+    const scope = tierFilter !== undefined ? `Lv${tierFilter} 会员` : ''
     const message = updatedCount > 0
-      ? `✅ 成功为 ${updatedCount} 位会员增加 ${days} 天会员时长`
-      : '⚠️ 当前没有有效会员可增加天数'
+      ? `✅ 成功为 ${updatedCount} 张有效会员卡增加 ${days} 天会员时长${scope ? `（${scope}）` : ''}`
+      : '⚠️ 当前没有有效会员卡可增加天数'
 
     return { success: true, count: updatedCount, message }
   }
@@ -734,37 +1117,59 @@ export class MembershipSystem {
         dailyLimit: this.config.nonMemberDailyLimit,
         points: 0,
         nai5DailyUsage: 0,
+        cards: [],
       }
     }
+    if (!this.userData[userId].cards) this.userData[userId].cards = []
   }
 
-  // 检查并重置每日使用次数
+  // 检查并重置每日使用次数；同时按会员卡维护会员状态（冗余字段 + 降级处理）
   checkAndResetDailyUsage(userId: string) {
     this.ensureUserData(userId)
 
+    const user = this.userData[userId]
+
     const now = new Date()
-    const lastUsed = new Date(this.userData[userId].lastUsed)
+    const lastUsed = new Date(user.lastUsed)
 
     // 如果不是同一天，重置使用次数
     if (now.getDate() !== lastUsed.getDate() ||
       now.getMonth() !== lastUsed.getMonth() ||
       now.getFullYear() !== lastUsed.getFullYear()) {
-      this.userData[userId].dailyUsage = 0
-      this.userData[userId].nai5DailyUsage = 0
+      user.dailyUsage = 0
+      user.nai5DailyUsage = 0
     }
 
-    // 检查会员是否过期
-    if (this.userData[userId].isMember && this.userData[userId].membershipExpiry < Date.now()) {
-      this.userData[userId].isMember = false
-      this.userData[userId].dailyLimit = this.config.nonMemberDailyLimit
+    // ========== 会员卡状态维护（等级制度） ==========
+    // 过期卡在计算生效等级时被逻辑忽略；物理清理交给定时清理任务，便于区分「过期会员」
+    const nowMs = Date.now()
+    const validCards = (user.cards || []).filter(card => card.expiry > nowMs)
+    let activeTier = this.computeActiveTier(validCards)
+    // tierEnabled 关闭时高等级卡不产生权益：生效等级视为 Lv1
+    if (activeTier > 1 && this.config.tierEnabled === false) activeTier = 1
+    const wasMember = user.isMember
 
-      if (this.config.pointsEnabled && this.config.pointsMode === 'periodic' && !this.config.pointsRefreshIncludeNonMember) {
-        this.userData[userId].points = 0
+    if (activeTier > 0) {
+      // 仍有有效卡：权益按生效等级（已按开关 clamp）；membershipExpiry = 全部有效卡中最远的到期时间（「会员资格」整体到期）
+      user.isMember = true
+      user.membershipExpiry = Math.max(...validCards.map(card => card.expiry))
+      user.dailyLimit = this.getTierBenefit(activeTier).dailyLimit
+    } else {
+      // 无任何有效卡
+      user.isMember = false
+      user.dailyLimit = this.config.nonMemberDailyLimit
+      if (wasMember) {
+        // 由会员降级为非会员：清空冗余到期时间，并按现有规则处理点数
+        user.membershipExpiry = 0
+        if (this.config.pointsEnabled && this.config.pointsMode === 'periodic' && !this.config.pointsRefreshIncludeNonMember) {
+          user.points = 0
+        }
+        this.ctx.logger.info(`[会员系统] 用户 ${userId} 的会员卡已全部到期，降为非会员`)
       }
     }
   }
 
-  // 检查用户是否可以使用画图功能
+  // 检查用户是否可以使用画图功能（会员的限额/CD 按生效等级取值）
   canUseDrawing(userId: string, session: Session): boolean | string {
     if (!this.config.membershipEnabled) return true
 
@@ -774,15 +1179,17 @@ export class MembershipSystem {
 
     // 检查会员状态和使用次数
     if (user.isMember) {
-      // 会员用户
-      if (this.config.memberDailyLimit > 0 && user.dailyUsage >= this.config.memberDailyLimit) {
-        return session.text('commands.novelai.messages.member-daily-limit-reached', [this.config.memberDailyLimit])
+      // 会员用户：按生效等级权益判定
+      const benefit = this.getMemberBenefit(userId)
+
+      if (benefit && benefit.dailyLimit > 0 && user.dailyUsage >= benefit.dailyLimit) {
+        return session.text('commands.novelai.messages.member-daily-limit-reached', [benefit.dailyLimit])
       }
 
       // 检查会员CD时间
-      if (this.config.memberCooldown > 0 && user.lastDrawTime) {
+      if (benefit && benefit.cooldown > 0 && user.lastDrawTime) {
         const now = Date.now()
-        const cooldownMs = this.config.memberCooldown * 1000
+        const cooldownMs = benefit.cooldown * 1000
         const timeSinceLastDraw = now - user.lastDrawTime
 
         if (timeSinceLastDraw < cooldownMs) {
@@ -831,8 +1238,17 @@ export class MembershipSystem {
     return isNovelAIV5Model(modelMap[model] || model)
   }
 
-  getNai5DailyLimit(): number {
-    return this.config.memberNai5DailyLimit || 0
+  /**
+   * 获取用户生效等级的 nai5 / nai5c 每日免费限额。
+   * - 传入 userId：Lv1 = 配置字段 memberNai5DailyLimit，Lv2-Lv5 = tierBenefits；非会员返回 0
+   * - 不传 userId：返回 Lv1 档值（兼容无上下文的调用）
+   * 0 表示不额外限制（全部走 Opus 免费档）。
+   */
+  getNai5DailyLimit(userId?: string): number {
+    if (!userId) return this.getTierBenefit(1).nai5DailyLimit
+    const tier = this.getActiveTier(userId)
+    if (tier <= 0) return 0
+    return this.getTierBenefit(tier).nai5DailyLimit
   }
 
   getNai5DailyUsage(userId: string): number {
@@ -842,11 +1258,11 @@ export class MembershipSystem {
 
   /**
    * 本次 nai5 任务中，超出会员免费日限、需要按 Anlas 计费的张数。
-   * 日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）。
+   * 日限按用户生效等级取值；日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）。
    */
   getNai5OverageCount(userId: string, drawCount: number = 1): number {
     if (!this.config.membershipEnabled) return 0
-    const limit = this.getNai5DailyLimit()
+    const limit = this.getNai5DailyLimit(userId)
     if (limit <= 0 || drawCount <= 0) return 0
     if (!this.isActiveMember(userId)) return 0
 

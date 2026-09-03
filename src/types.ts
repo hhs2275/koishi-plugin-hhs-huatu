@@ -101,15 +101,33 @@ export namespace NovelAI {
   }
 }
 
+/** 会员卡：一次授予产生的记录，同一用户可持有多张（多卡叠加制） */
+export interface MembershipCard {
+  tier: number          // 等级 1-5
+  expiry: number        // 卡到期时间戳
+  grantedAt: number     // 授予时间
+  grantedBy?: string    // 授予人（操作的管理员 ID）
+}
+
+/** 等级权益（Lv1 由现有全局配置字段构成，Lv2-Lv5 来自 tierBenefits 配置） */
+export interface TierBenefit {
+  tier: number
+  nai5DailyLimit: number   // nai5/nai5c 每日免费次数
+  pointsRefresh: number    // 周期刷新点数
+  dailyLimit: number       // 每日总限额，0=无限
+  cooldown: number         // CD 秒数，0=无
+}
+
 export interface UserData {
   isMember: boolean
-  membershipExpiry: number // 时间戳，会员到期时间
+  membershipExpiry: number // 时间戳，会员到期时间（= 当前生效卡的到期时间，冗余维护）
   dailyUsage: number // 当日使用次数
   lastUsed: number // 时间戳，上次使用时间
   dailyLimit: number // 每日使用上限
   lastDrawTime?: number // 时间戳，上次绘图时间，用于计算CD
   points?: number // 当前点数
   nai5DailyUsage?: number // 当日 nai5 / nai5c 使用次数
+  cards?: MembershipCard[] // 会员卡列表（内存缓存；数据库独立存储于 hhs_huatu_membership_cards）
 }
 
 // 数据库表结构
@@ -126,10 +144,21 @@ export interface HhsHuatuUser {
   nai5DailyUsage: number
 }
 
+// 会员卡数据库表结构
+export interface HhsHuatuMembershipCard {
+  id: number
+  visitorId: string       // 用户唯一标识 (userId)
+  tier: number            // 等级 1-5
+  expiry: number          // 卡到期时间戳
+  grantedAt: number       // 授予时间
+  grantedBy: string       // 授予人
+}
+
 // 声明 Koishi 数据库表
 declare module 'koishi' {
   interface Tables {
     hhs_huatu_user: HhsHuatuUser
+    hhs_huatu_membership_cards: HhsHuatuMembershipCard
   }
 }
 

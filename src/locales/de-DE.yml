@@ -88,6 +88,8 @@ commands:
       member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
       membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.
       membership-active: Sie sind derzeit Mitglied, tägliche Nutzung {0} Mal, verbleibend {1} Mal.
+      tier-active: Sie sind derzeit Lv{0}-Mitglied, tägliche Nutzung {1} Mal, verbleibend {2} Mal.
+      tier-active-unlimited: Sie sind derzeit Lv{0}-Mitglied mit unbegrenzter Nutzung.
       non-member-usage: Sie sind derzeit ein normaler Benutzer, täglich {0} Mal nutzbar, heute {1} Mal verwendet, verbleibend {2} Mal.
       cooldown: Abklingzeit aktiv, bitte warten Sie {0} Sekunden.
       inpaint-step1: Das Originalbild wurde abgedunkelt. Bitte malen Sie weiße Bereiche auf die Stellen, die neu gezeichnet werden sollen, und senden Sie es innerhalb von 120 Sekunden zurück.
@@ -168,6 +170,7 @@ commands:
     options:
       user: Ziel-Benutzer-ID
       days: Anzahl der hinzuzufügenden oder festzulegenden Mitgliedschaftstage
+      tier: Mitgliedsstufe (Lv1-Lv5), zusammen mit -d verwendet; Standard 1
       addPoints: Anzahl der hinzuzufügenden oder abzuziehenden Punkte (unterstützt negative Werte)
       refreshPoints: Punkte des Benutzers aktualisieren
       cancel: Mitgliedschaft kündigen
@@ -198,6 +201,8 @@ commands:
       member-daily-limit-reached: Ihr tägliches Mitgliederlimit ({0} Mal) wurde erreicht, bitte kommen Sie morgen wieder.
       membership-expired: Ihre Mitgliedschaft ist abgelaufen, Sie wurden auf normale Benutzerrechte zurückgesetzt.
       membership-active: Sie sind derzeit Mitglied, tägliche Nutzung {0} Mal, verbleibend {1} Mal.
+      tier-active: Sie sind derzeit Lv{0}-Mitglied, tägliche Nutzung {1} Mal, verbleibend {2} Mal.
+      tier-active-unlimited: Sie sind derzeit Lv{0}-Mitglied mit unbegrenzter Nutzung.
       non-member-usage: Sie sind derzeit ein normaler Benutzer, täglich {0} Mal nutzbar, heute {1} Mal verwendet, verbleibend {2} Mal.
       cooldown: Abklingzeit aktiv, bitte warten Sie {0} Sekunden.
       response-error: Unbekannter Fehler aufgetreten ({0}).

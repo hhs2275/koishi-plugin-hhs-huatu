@@ -287,7 +287,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
         )
         pointsCost = cost.total
         nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, options.model || config.model, drawCount)
-        if (membershipSystem.isNai5Model(options.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+        if (membershipSystem.isNai5Model(options.model || config.model) && membershipSystem.getNai5DailyLimit(userId) > 0) {
           membershipSystem.reserveNai5Usage(userId, drawCount)
           ; (options as any)._reservedNai5 = drawCount
         }

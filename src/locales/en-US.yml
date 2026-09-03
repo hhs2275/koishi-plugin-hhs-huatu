@@ -89,6 +89,8 @@ commands:
       member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
       membership-expired: Your membership has expired, you have been reverted to normal user privileges.
       membership-active: You are currently a member, daily usage {0} times, remaining {1} times.
+      tier-active: You are currently a Lv{0} member, daily usage {1} times, remaining {2} times.
+      tier-active-unlimited: You are currently a Lv{0} member with unlimited usage.
       non-member-usage: You are currently a regular user, daily usage {0} times, used {1} times today, remaining {2} times.
       cooldown: Drawing cooldown active, please wait {0} seconds.
       inpaint-step1: The original image has been darkened. Please paint white on the areas you want to repaint, then send it back within 120 seconds.
@@ -168,6 +170,7 @@ commands:
     options:
       user: Target user ID
       days: Number of days to add or set for membership
+      tier: Membership tier (Lv1-Lv5), used with -d; defaults to 1
       addPoints: Number of points to add or deduct (supports negative values)
       refreshPoints: Refresh points for the user
       cancel: Cancel membership
@@ -198,6 +201,8 @@ commands:
       member-daily-limit-reached: Your daily member limit ({0} times) has been reached, please come back tomorrow.
       membership-expired: Your membership has expired, you have been reverted to normal user privileges.
       membership-active: You are currently a member, daily usage {0} times, remaining {1} times.
+      tier-active: You are currently a Lv{0} member, daily usage {1} times, remaining {2} times.
+      tier-active-unlimited: You are currently a Lv{0} member with unlimited usage.
       non-member-usage: You are currently a regular user, daily usage {0} times, used {1} times today, remaining {2} times.
       cooldown: Drawing cooldown active, please wait {0} seconds.
       response-error: Unknown error occurred ({0}).

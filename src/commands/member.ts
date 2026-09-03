@@ -11,6 +11,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
     .alias('会员')
     .option('user', '-u <user:string>')
     .option('days', '-d <days:number>')
+    .option('tier', '-t <tier:number>')
     .option('addPoints', '-a <points:number>')
     .option('refreshPoints', '-f')
     .option('cancel', '-c')
@@ -33,7 +34,13 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         }
       }
 
-      // 列出所有未过期的会员
+      // 等级参数校验（仅在与 -d / -c / -l 同时使用时生效）
+      const tierFilter = options.tier
+      if (tierFilter !== undefined && (tierFilter < 1 || tierFilter > 5 || !Number.isInteger(tierFilter))) {
+        return '会员等级必须是 1-5 之间的整数（Lv1-Lv5）'
+      }
+
+      // 列出所有未过期的会员（显示生效等级，支持 -t 过滤）
       if (options.list) {
         // 需要管理员权限
         if (session.user.authority < config.membershipAuthLv) {
@@ -41,23 +48,34 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         }
 
         const now = Date.now()
-        const activeMembers = []
+        const activeMembers: Array<{ id: string; tier: number; remainingDays: number; expiry: number }> = []
 
-        // 遍历所有用户数据，筛选出未过期的会员
+        // 遍历所有用户数据，筛选出有有效会员卡的用户
         for (const id in userData) {
-          const user = userData[id]
-          if (user.isMember && user.membershipExpiry > now) {
-            const remainingDays = Math.ceil((user.membershipExpiry - now) / (24 * 60 * 60 * 1000))
-            activeMembers.push({ id, remainingDays, expiry: user.membershipExpiry })
-          }
+          const tier = membershipSystem.getActiveTier(id)
+          if (tier <= 0) continue
+          if (tierFilter !== undefined && tier !== tierFilter) continue
+          // 生效卡中最近的到期时间（同档取最远）
+          const validCards = userData[id].cards.filter(card => card.expiry > now)
+          const expiry = Math.max(...validCards.filter(card => card.tier === tier).map(card => card.expiry))
+          const remainingDays = Math.ceil((expiry - now) / (24 * 60 * 60 * 1000))
+          activeMembers.push({ id, tier, remainingDays, expiry })
         }
 
         if (activeMembers.length === 0) {
-          return '当前没有有效会员'
+          return tierFilter !== undefined ? `当前没有生效等级为 Lv${tierFilter} 的会员` : '当前没有有效会员'
         }
 
-        // 按剩余天数排序
-        activeMembers.sort((a, b) => a.remainingDays - b.remainingDays)
+        // 各等级数量提示（按等级从高到低，只列出有人的等级）
+        const tierCount: Record<number, number> = {}
+        for (const m of activeMembers) tierCount[m.tier] = (tierCount[m.tier] || 0) + 1
+        const tierParts = Object.keys(tierCount)
+          .map(Number)
+          .sort((a, b) => b - a)
+          .map(t => `Lv${t} ${tierCount[t]}个`)
+
+        // 按等级降序、剩余天数升序排序
+        activeMembers.sort((a, b) => (b.tier - a.tier) || (a.remainingDays - b.remainingDays))
 
         // 分页处理
         const pageSize = Math.max(1, Math.min(options.size, 20)); // 每页显示数量，限制在1-20之间
@@ -75,11 +93,13 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         const membersOnPage = activeMembers.slice(startIndex, endIndex);
 
         // 格式化输出
-        let result = `当前共有 ${activeMembers.length} 个有效会员（第 ${currentPage}/${totalPages} 页）：\n\n`;
+        let result = `当前共有 ${activeMembers.length} 个有效会员`;
+        if (tierParts.length) result += `，${tierParts.join('，')}`;
+        result += `（第 ${currentPage}/${totalPages} 页）：\n\n`;
         membersOnPage.forEach((member, index) => {
           const expireDate = new Date(member.expiry).toLocaleString();
           const globalIndex = startIndex + index + 1;
-          result += `${globalIndex}. 用户ID: ${member.id}\n   剩余天数: ${member.remainingDays} 天\n   到期时间: ${expireDate}\n\n`;
+          result += `${globalIndex}. 用户ID: ${member.id}（Lv${member.tier}）\n   剩余天数: ${member.remainingDays} 天\n   到期时间: ${expireDate}\n\n`;
         });
 
         // 添加分页导航提示
@@ -101,7 +121,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
       // 检查并重置每日使用次数
       membershipSystem.checkAndResetDailyUsage(targetId)
 
-      // 如果是刷新点数
+      // 如果是刷新点数（按生效等级取刷新量）
       if (options.refreshPoints) {
         if (!config.pointsEnabled) {
           return '点数控制未启用'
@@ -113,16 +133,16 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           return `用户 ${targetId} 暂无使用记录，无法刷新点数`
         }
         if (!config.pointsRefreshIncludeNonMember) {
-          const user = userData[targetId]
-          if (!user.isMember || user.membershipExpiry < Date.now()) {
+          if (!membershipSystem.isActiveMember(targetId)) {
             return `刷新范围不包含非会员，无法为该用户刷新点数`
           }
         }
-        const refreshAmount = config.pointsRefreshAmount || 200
+        const tier = membershipSystem.getActiveTier(targetId)
+        const refreshAmount = membershipSystem.getTierBenefit(tier > 0 ? tier : 1).pointsRefresh
         userData[targetId].points = refreshAmount
         // 保存用户数据
         await membershipSystem.saveUserData()
-        return `已刷新用户 ${targetId} 的点数，当前剩余：${refreshAmount}`
+        return `已刷新用户 ${targetId} 的点数（Lv${tier > 0 ? tier : 1} 档），当前剩余：${refreshAmount}`
       }
 
       // 如果是添加点数
@@ -140,73 +160,48 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         return `已为用户 ${targetId} ${action} ${Math.abs(options.addPoints)} 点数，当前剩余：${userData[targetId].points}`
       }
 
-      // 如果是取消会员
+      // 如果是取消会员（-c 全部取消；-c -t n 仅取消该等级卡）
       if (options.cancel) {
         if (!userData[targetId]) {
           return '该用户不存在会员记录'
         }
 
-        userData[targetId].isMember = false
-        userData[targetId].membershipExpiry = 0
-        userData[targetId].dailyLimit = config.nonMemberDailyLimit
+        const { removed, remainingTier } = await membershipSystem.cancelMembershipCards(targetId, tierFilter)
 
-        if (config.pointsEnabled && config.pointsMode === 'periodic' && !config.pointsRefreshIncludeNonMember) {
-          userData[targetId].points = 0
+        if (removed === 0) {
+          return tierFilter !== undefined
+            ? `用户 ${targetId} 没有 Lv${tierFilter} 会员卡`
+            : '该用户没有可取消的会员卡'
         }
 
-        // 保存用户数据
-        await membershipSystem.saveUserData()
-
-        return `已取消用户 ${targetId} 的会员资格`
+        const scope = tierFilter !== undefined ? `Lv${tierFilter} 会员卡` : '全部会员卡'
+        return remainingTier > 0
+          ? `已取消用户 ${targetId} 的${scope}，当前生效等级：Lv${remainingTier}`
+          : `已取消用户 ${targetId} 的${scope}，该用户已恢复为普通用户`
       }
 
-      // 如果是设置会员
+      // 如果是授予/续费会员卡（-d 天数，-t 等级缺省为 1）
       if (options.days) {
-        if (!userData[targetId]) {
-          userData[targetId] = {
-            isMember: true,
-            membershipExpiry: Date.now() + options.days * 24 * 60 * 60 * 1000,
-            dailyUsage: 0,
-            lastUsed: Date.now(),
-            dailyLimit: config.memberDailyLimit || 0,
-            points: config.pointsEnabled ? (config.pointsDefault || 200) : 0,
-            nai5DailyUsage: 0,
-          }
-        } else {
-          // 如果用户已经是会员且会员未过期，则在原有期限上增加天数
-          if (userData[targetId].isMember && userData[targetId].membershipExpiry > Date.now()) {
-            userData[targetId].membershipExpiry += options.days * 24 * 60 * 60 * 1000
-          } else {
-            // 如果用户不是会员或会员已过期，则从当前时间开始计算
-            userData[targetId].isMember = true
-            userData[targetId].membershipExpiry = Date.now() + options.days * 24 * 60 * 60 * 1000
-
-            // 从非会员变成会员时，刷新点数（周期性模式下）
-            if (config.pointsEnabled && config.pointsMode === 'periodic') {
-              const refreshAmount = config.pointsRefreshAmount || 200
-              userData[targetId].points = refreshAmount
-              ctx.logger.info(`[会员系统] 用户 ${targetId} 成为会员，点数已刷新为 ${refreshAmount}`)
-            }
-          }
-          userData[targetId].dailyLimit = config.memberDailyLimit || 0
+        const tier = tierFilter ?? 1
+        if (tier < 1 || tier > 5 || !Number.isInteger(tier)) {
+          return '会员等级必须是 1-5 之间的整数（Lv1-Lv5）'
+        }
+        if (tier > 1 && !config.tierEnabled) {
+          return '会员等级功能未启用，请在插件配置「会员等级设置」中打开 tierEnabled 后再授予 Lv2-Lv5'
         }
 
-        // 保存用户数据
-        await membershipSystem.saveUserData()
-
-        const expireDate = new Date(userData[targetId].membershipExpiry)
-        // 根据是增加天数还是新设置会员返回不同的提示
-        if (userData[targetId].isMember && userData[targetId].membershipExpiry > Date.now()) {
-          return `已为用户 ${targetId} 增加 ${options.days} 天会员，到期时间：${expireDate.toLocaleString()}`
-        } else {
-          return `已为用户 ${targetId} 设置 ${options.days} 天会员，到期时间：${expireDate.toLocaleString()}`
-        }
+        const result = await membershipSystem.grantMembershipCard(targetId, tier, options.days, userId)
+        const expireDate = new Date(result.expiry).toLocaleString()
+        return result.renewed
+          ? `已为用户 ${targetId} 的 Lv${result.tier} 会员卡增加 ${options.days} 天，到期时间：${expireDate}`
+          : `已为用户 ${targetId} 设置 Lv${result.tier} 会员卡 ${options.days} 天，到期时间：${expireDate}`
       }
 
       // 查询会员状态
       const isQueryingSelf = targetId === userId
+      const activeTier = membershipSystem.getActiveTier(targetId)
 
-      if (!userData[targetId]) {
+      if (!userData[targetId] || (!activeTier && !userData[targetId].cards?.length && !userData[targetId].isMember && (userData[targetId].dailyUsage || 0) === 0)) {
         if (isQueryingSelf) {
           return session.text('commands.novelai.messages.non-member-usage', [
             config.nonMemberDailyLimit,
@@ -220,34 +215,46 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
 
       const user = userData[targetId]
 
-      if (user.isMember) {
-        const expireDate = new Date(user.membershipExpiry)
-        const remainingDays = Math.ceil((user.membershipExpiry - Date.now()) / (24 * 60 * 60 * 1000))
+      if (activeTier > 0) {
+        const benefit = membershipSystem.getTierBenefit(activeTier)
+        const now = Date.now()
+
+        // 卡片明细
+        let cardsInfo = ''
+        const sortedCards = (user.cards || [])
+          .filter(card => card.expiry > now)
+          .sort((a, b) => b.tier - a.tier)
+        for (const card of sortedCards) {
+          const expireDate = new Date(card.expiry).toLocaleString()
+          const remainingDays = Math.ceil((card.expiry - now) / (24 * 60 * 60 * 1000))
+          cardsInfo += `\n  Lv${card.tier} 会员卡：到期 ${expireDate}（剩余 ${remainingDays} 天）`
+        }
 
         let usageInfo = ''
-        if (config.memberDailyLimit > 0) {
-          const remaining = config.memberDailyLimit - user.dailyUsage
+        if (benefit.dailyLimit > 0) {
+          const remaining = benefit.dailyLimit - user.dailyUsage
           if (isQueryingSelf) {
-            usageInfo = session.text('commands.novelai.messages.membership-active', [
-              config.memberDailyLimit,
+            usageInfo = session.text('commands.novelai.messages.tier-active', [
+              activeTier,
+              benefit.dailyLimit,
               remaining
             ])
           } else {
-            usageInfo = `用户 ${targetId} 是会员用户\n每日限额：${config.memberDailyLimit} 次，剩余：${remaining} 次`
+            usageInfo = `用户 ${targetId} 是 Lv${activeTier} 会员\n每日限额：${benefit.dailyLimit} 次，剩余：${remaining} 次`
           }
         } else {
           if (isQueryingSelf) {
-            usageInfo = '您当前是会员用户，可无限次使用'
+            usageInfo = session.text('commands.novelai.messages.tier-active-unlimited', [activeTier])
           } else {
-            usageInfo = `用户 ${targetId} 是会员用户，可无限次使用`
+            usageInfo = `用户 ${targetId} 是 Lv${activeTier} 会员，可无限次使用`
           }
         }
 
         let nai5Info = ''
-        if (config.memberNai5DailyLimit > 0) {
+        if (benefit.nai5DailyLimit > 0) {
           const nai5Used = user.nai5DailyUsage || 0
-          const nai5Remaining = Math.max(0, config.memberNai5DailyLimit - nai5Used)
-          nai5Info = `\nnai5/nai5c 今日免费：${config.memberNai5DailyLimit} 次，已用 ${nai5Used} 次，剩余 ${nai5Remaining} 次`
+          const nai5Remaining = Math.max(0, benefit.nai5DailyLimit - nai5Used)
+          nai5Info = `\nnai5/nai5c 今日免费：${benefit.nai5DailyLimit} 次，已用 ${nai5Used} 次，剩余 ${nai5Remaining} 次`
           if (config.pointsEnabled && nai5Remaining === 0) {
             nai5Info += '（超出后按 Anlas 估算扣点）'
           }
@@ -260,12 +267,12 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           if (config.pointsMode === 'periodic') {
             const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
             if (remainDaysRefresh >= 0) {
-              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后`
+              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后（Lv${activeTier} 档刷新为 ${benefit.pointsRefresh} 点）`
             }
           }
         }
 
-        return `${usageInfo}${nai5Info}\n会员到期时间：${expireDate.toLocaleString()}（剩余${remainingDays}天）${pointsInfo}`
+        return `${usageInfo}\n持有会员卡：${cardsInfo}${nai5Info}${pointsInfo}`
       } else {
         const remaining = config.nonMemberDailyLimit - user.dailyUsage
 
@@ -300,10 +307,11 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
       .option('remind', '-r 立即执行会员到期提醒')
       .option('status', '-s 查看定时任务状态')
       .option('resetUsage', '-u <userId:string> 重置指定用户的使用次数')
-      .option('addDaysAll', '-a <days:number> 给所有会员增加天数')
-      .option('refreshPoints', '-f 立即执行点数刷新')
-      .option('addPoints', '--add-points <amount:number> 给所有会员加点数')
-      .option('subPoints', '--sub-points <amount:number> 给所有会员减点数')
+      .option('addDaysAll', '-a <days:number> 给会员增加天数（配合 -t 仅操作指定等级）')
+      .option('tier', '-t <tier:number> 指定生效等级（Lv1-Lv5），缺省对所有会员操作')
+      .option('refreshPoints', '-f 立即执行点数刷新（配合 -t 仅刷新指定等级）')
+      .option('addPoints', '--add-points <amount:number> 给会员加点数（配合 -t 仅操作指定等级）')
+      .option('subPoints', '--sub-points <amount:number> 给会员减点数（配合 -t 仅操作指定等级）')
       .option('setPoints', '--set-points <value:string> 设置指定用户点数，格式: 用户ID:点数')
       .option('importData', '--import 从 JSON 文件导入数据')
       .action(async ({ session, options }) => {
@@ -312,11 +320,23 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           return '会员系统未启用'
         }
 
-        // 给所有会员增加天数
+        // 等级参数校验（配合批量操作使用）
+        const debugTierFilter = options.tier
+        if (debugTierFilter !== undefined) {
+          if (debugTierFilter < 1 || debugTierFilter > 5 || !Number.isInteger(debugTierFilter)) {
+            return '会员等级必须是 1-5 之间的整数（Lv1-Lv5）'
+          }
+          if (!config.tierEnabled && debugTierFilter > 1) {
+            return '会员等级功能未启用（tierEnabled 已关闭），无法按 Lv2-Lv5 过滤操作'
+          }
+        }
+
+        // 给会员增加天数（无 -t 对所有会员，有 -t 仅对该等级会员）
         if (options.addDaysAll !== undefined) {
           const days = options.addDaysAll
-          await session.send(`正在为所有会员增加 ${days} 天会员时长...`)
-          const result = await membershipSystem.addDaysToAllMembers(days)
+          const scope = debugTierFilter !== undefined ? `Lv${debugTierFilter} 会员` : '所有会员'
+          await session.send(`正在为${scope}增加 ${days} 天会员时长...`)
+          const result = await membershipSystem.addDaysToAllMembers(days, debugTierFilter)
           return result.message
         }
 
@@ -330,18 +350,20 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           userData[targetId].nai5DailyUsage = 0
           await membershipSystem.saveUserData()
           const user = userData[targetId]
-          const dailyLimit = user.isMember ? config.memberDailyLimit : config.nonMemberDailyLimit
-          const remaining = dailyLimit - user.dailyUsage
-          const nai5Limit = config.memberNai5DailyLimit || 0
+          const tier = membershipSystem.getActiveTier(targetId)
+          const benefit = membershipSystem.getTierBenefit(tier > 0 ? tier : 1)
+          const dailyLimit = tier > 0 ? benefit.dailyLimit : config.nonMemberDailyLimit
+          const remaining = dailyLimit === 0 ? '无限' : dailyLimit - user.dailyUsage
+          const nai5Limit = tier > 0 ? benefit.nai5DailyLimit : 0
           const nai5Line = nai5Limit > 0
             ? `\nnai5/nai5c 每日免费：${nai5Limit} 次\nnai5 已使用：${user.nai5DailyUsage || 0} 次`
             : ''
 
           return `✅ 已重置用户 ${targetId} 的使用次数\n` +
-            `当前状态：${user.isMember ? '会员' : '非会员'}\n` +
-            `每日限额：${dailyLimit} 次\n` +
+            `当前状态：${tier > 0 ? `Lv${tier} 会员` : '非会员'}\n` +
+            `每日限额：${dailyLimit === 0 ? '无限制' : dailyLimit + ' 次'}\n` +
             `已使用：${user.dailyUsage} 次\n` +
-            `剩余：${remaining} 次` + nai5Line
+            `剩余：${remaining}${typeof remaining === 'string' ? '' : ' 次'}` + nai5Line
 
         }
 
@@ -417,6 +439,17 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           statusMsg += `过期会员：${expiredMembers}\n`
           statusMsg += `非会员：${nonMembers}\n`
 
+          // 各等级持卡统计（按生效等级）
+          statusMsg += `\n【等级分布】\n`
+          statusMsg += `等级制度：${config.tierEnabled ? '已启用' : '未启用（所有会员按 Lv1 生效）'}\n`
+          const tierStats = membershipSystem.getActiveTierStats()
+          for (let tier = 1; tier <= 5; tier++) {
+            const benefit = membershipSystem.getTierBenefit(tier)
+            const count = tierStats[tier] || 0
+            const tag = !config.tierEnabled && tier > 1 ? '（未启用）' : ''
+            statusMsg += `Lv${tier}：${count} 人（nai5 ${benefit.nai5DailyLimit} 次/天 · 刷新 ${benefit.pointsRefresh} 点）${tag}\n`
+          }
+
           // 点数系统状态
           if (config.pointsEnabled) {
             statusMsg += `\n【点数系统】\n`
@@ -470,30 +503,33 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           if (config.pointsMode !== 'periodic') {
             return '❌ 当前点数模式为永久模式，无需刷新'
           }
-          await session.send('正在执行点数刷新...')
-          const result = await membershipSystem.refreshPoints()
+          const refreshScope = debugTierFilter !== undefined ? `Lv${debugTierFilter} 会员` : '所有会员'
+          await session.send(`正在为${refreshScope}执行点数刷新...`)
+          const result = await membershipSystem.refreshPoints(debugTierFilter)
           return result.message
         }
 
-        // 给所有会员加点数
+        // 给会员加点数（无 -t 对所有会员，有 -t 仅对该等级会员）
         if (options.addPoints !== undefined) {
           if (!config.pointsEnabled) {
             return '❌ 点数控制未启用'
           }
           const amount = Math.abs(options.addPoints)
-          await session.send(`正在为所有会员增加 ${amount} 点数...`)
-          const result = await membershipSystem.addPointsToAll(amount, true)
+          const scope = debugTierFilter !== undefined ? `Lv${debugTierFilter} 会员` : '所有会员'
+          await session.send(`正在为${scope}增加 ${amount} 点数...`)
+          const result = await membershipSystem.addPointsToAll(amount, true, debugTierFilter)
           return result.message
         }
 
-        // 给所有会员减点数
+        // 给会员减点数（无 -t 对所有会员，有 -t 仅对该等级会员）
         if (options.subPoints !== undefined) {
           if (!config.pointsEnabled) {
             return '❌ 点数控制未启用'
           }
           const amount = -Math.abs(options.subPoints)
-          await session.send(`正在为所有会员扣除 ${Math.abs(amount)} 点数...`)
-          const result = await membershipSystem.addPointsToAll(amount, true)
+          const scope = debugTierFilter !== undefined ? `Lv${debugTierFilter} 会员` : '所有会员'
+          await session.send(`正在为${scope}扣除 ${Math.abs(amount)} 点数...`)
+          const result = await membershipSystem.addPointsToAll(amount, true, debugTierFilter)
           return result.message
         }
 
@@ -527,7 +563,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         }
 
         // 如果没有指定任何选项，显示帮助
-        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态\n-u 重置指定用户的使用次数\n-a <天数> 给所有会员增加天数\n-f 立即刷新点数\n--add-points <点数> 给所有会员加点\n--sub-points <点数> 给所有会员减点\n--set-points <用户ID:点数> 设置指定用户点数\n--import 从 JSON 导入数据'
+        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态（含等级分布）\n-u 重置指定用户的使用次数\n-a <天数> 给会员增加天数（加 -t <等级> 仅操作该等级会员）\n-t <等级> 配合批量操作指定生效等级\n-f 立即刷新点数（按生效等级；加 -t 仅刷新该等级会员）\n--add-points <点数> 给会员加点（可配 -t）\n--sub-points <点数> 给会员减点（可配 -t）\n--set-points <用户ID:点数> 设置指定用户点数\n--import 从 JSON 导入数据'
       })
   }
 }

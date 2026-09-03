@@ -116,7 +116,7 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
             redrawPerTask.push(cost.perImage.slice(start, start + imagesPerTask).reduce((sum, n) => sum + n, 0))
           }
           nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, lastOptions.model || config.model, drawCount)
-          if (membershipSystem.isNai5Model(lastOptions.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+          if (membershipSystem.isNai5Model(lastOptions.model || config.model) && membershipSystem.getNai5DailyLimit(userId) > 0) {
             membershipSystem.reserveNai5Usage(userId, drawCount)
           }
           if (cost.total > 0) {
@@ -157,6 +157,8 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
 
           // 在发送队列信息后立即更新lastDrawTime
           if (config.membershipEnabled) {
+            const tier = membershipSystem.getActiveTier(userId)
+            const benefit = tier > 0 ? membershipSystem.getTierBenefit(tier) : null
             const user = userData[userId] || {
               isMember: false,
               membershipExpiry: 0,
@@ -165,13 +167,13 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
               dailyLimit: config.nonMemberDailyLimit
             }
 
-            // 计算所需的CD时间（每张图的CD时间 * 重画数量）
-            const cooldownPerImage = user.isMember ? config.memberCooldown : config.nonMemberCooldown
+            // 计算所需的CD时间（每张图的CD时间 * 重画数量），会员按生效等级取值
+            const cooldownPerImage = benefit ? benefit.cooldown : config.nonMemberCooldown
             const totalCooldown = cooldownPerImage * repeatCount
 
             // 更新lastDrawTime，考虑多张图的CD累加
             if (user.lastDrawTime) {
-              userData[userId].lastDrawTime = Date.now() + (totalCooldown * 1000) - (user.isMember ? config.memberCooldown * 1000 : config.nonMemberCooldown * 1000)
+              userData[userId].lastDrawTime = Date.now() + (totalCooldown * 1000) - (cooldownPerImage * 1000)
             } else {
               userData[userId].lastDrawTime = Date.now()
             }
@@ -237,7 +239,7 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
               const unitCost = redrawPerTask[index] || 0
               if (unitCost > 0) taskOptions._deductedPoints = unitCost
             }
-            if (config.membershipEnabled && membershipSystem.isNai5Model(lastTask.options?.model || config.model) && membershipSystem.getNai5DailyLimit() > 0) {
+            if (config.membershipEnabled && membershipSystem.isNai5Model(lastTask.options?.model || config.model) && membershipSystem.getNai5DailyLimit(currentUserId) > 0) {
               taskOptions._reservedNai5 = getTaskDrawCount(lastTask.options, 1)
             }
 

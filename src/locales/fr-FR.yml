@@ -88,6 +88,8 @@ commands:
       member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
       membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.
       membership-active: Vous êtes actuellement membre, utilisation quotidienne {0} fois, restant {1} fois.
+      tier-active: Vous êtes actuellement membre Lv{0}, utilisation quotidienne {1} fois, restant {2} fois.
+      tier-active-unlimited: Vous êtes actuellement membre Lv{0} avec utilisation illimitée.
       non-member-usage: Vous êtes actuellement un utilisateur régulier, utilisation quotidienne {0} fois, utilisé {1} fois aujourd'hui, restant {2} fois.
       cooldown: Temps de recharge de dessin actif, veuillez attendre {0} secondes.
       inpaint-step1: L'image originale a été assombrie. Veuillez peindre en blanc les zones que vous souhaitez repeindre, puis renvoyez-la dans les 120 secondes.
@@ -168,6 +170,7 @@ commands:
     options:
       user: ID utilisateur cible
       days: Nombre de jours à ajouter ou à définir pour l'abonnement
+      tier: Niveau d'adhésion (Lv1-Lv5), utilisé avec -d ; par défaut 1
       addPoints: Nombre de points à ajouter ou à déduire (prend en charge les valeurs négatives)
       refreshPoints: Actualiser les points de l'utilisateur
       cancel: Annuler l'abonnement
@@ -198,6 +201,8 @@ commands:
       member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
       membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.
       membership-active: Vous êtes actuellement membre, utilisation quotidienne {0} fois, restant {1} fois.
+      tier-active: Vous êtes actuellement membre Lv{0}, utilisation quotidienne {1} fois, restant {2} fois.
+      tier-active-unlimited: Vous êtes actuellement membre Lv{0} avec utilisation illimitée.
       non-member-usage: Vous êtes actuellement un utilisateur régulier, utilisation quotidienne {0} fois, utilisé {1} fois aujourd'hui, restant {2} fois.
       cooldown: Temps de recharge de dessin actif, veuillez attendre {0} secondes.
       response-error: Erreur inconnue survenue ({0}).

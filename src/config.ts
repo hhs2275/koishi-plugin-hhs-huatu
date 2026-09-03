@@ -2,6 +2,7 @@ import { Computed, Dict, Schema, Session, Time } from 'koishi'
 import { Size } from './utils'
 import { closestMultiple } from './utils'
 import { SessionError } from 'koishi'
+import { TierBenefit } from './types'
 
 const options: Computed.Options = {
   userFields: ['authority'],
@@ -301,6 +302,9 @@ export interface Config extends PromptConfig, ParamConfig {
   memberReminderGroups?: string[]
   memberDebugCommandEnabled?: boolean
   memberDebugCommandAuthLv?: number
+  // 会员等级配置（tierEnabled 关闭时所有会员均按 Lv1 生效；Lv2-Lv5 见 tierBenefits）
+  tierEnabled?: boolean
+  tierBenefits?: TierBenefit[]
   // 点数控制配置
   pointsEnabled?: boolean
   pointsMode?: 'periodic' | 'permanent'
@@ -611,6 +615,23 @@ export const Config = Schema.intersect([
     memberDebugCommandEnabled: Schema.boolean().description('是否启用会员系统调试指令（允许手动触发清理和提醒）').default(false),
     memberDebugCommandAuthLv: Schema.number().description('使用调试指令所需的权限等级').default(4),
   }).description('会员系统设置'),
+
+  // 会员等级设置（Lv1 沿用会员系统设置中的字段；此处仅配置 Lv2-Lv5；默认关闭且折叠）
+  Schema.object({
+    tierEnabled: Schema.boolean().description('是否启用会员等级制度（Lv2-Lv5）。关闭时所有会员均按 Lv1 生效（即上方「会员系统设置」中的字段），已授予的高等级卡保留但不产生权益。').default(false),
+    tierBenefits: Schema.array(Schema.object({
+      tier: Schema.number().description('会员等级（2-5）').min(2).max(5).default(2),
+      nai5DailyLimit: Schema.number().description('该等级每日 nai5 / nai5c 免费次数。超出后与 Lv1 一致按 Anlas 估算扣除本地点数。').default(40).min(0),
+      pointsRefresh: Schema.number().description('该等级每次周期刷新恢复的点数（仅周期刷新模式）。').default(1400).min(0),
+      dailyLimit: Schema.number().description('该等级每日使用上限，设为 0 表示无限制。').default(0).min(0),
+      cooldown: Schema.number().description('该等级每张图的CD时间（秒），设为 0 表示无CD。').default(0).min(0),
+    })).description('Lv2-Lv5 等级权益表。用户同时持有多张会员卡时，按其中最高等级生效；Lv1 权益直接沿用「会员系统设置」中的字段。').collapse().default([
+      { tier: 2, nai5DailyLimit: 40, pointsRefresh: 1400, dailyLimit: 0, cooldown: 0 },
+      { tier: 3, nai5DailyLimit: 50, pointsRefresh: 1900, dailyLimit: 0, cooldown: 0 },
+      { tier: 4, nai5DailyLimit: 60, pointsRefresh: 2400, dailyLimit: 0, cooldown: 0 },
+      { tier: 5, nai5DailyLimit: 70, pointsRefresh: 2900, dailyLimit: 0, cooldown: 0 },
+    ]),
+  }).description('会员等级设置').collapse(),
 
   // 点数控制配置
   Schema.object({

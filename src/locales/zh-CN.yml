@@ -90,6 +90,8 @@ commands:
       member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
       membership-expired: 您的会员已过期，已恢复为普通用户权限。
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
+      tier-active: 您当前是 Lv{0} 会员，每日可使用{1}次，剩余{2}次。
+      tier-active-unlimited: 您当前是 Lv{0} 会员，可无限次使用。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
       size-exceeded: "图片尺寸超过设定的最大像素限制（当前尺寸：{0}x{1}）。请使用 -r 指令缩小图片，推荐使用 -r {2}x{3}。"
@@ -174,6 +176,7 @@ commands:
     options:
       user: 目标用户ID
       days: 增加或设置的会员天数
+      tier: 会员等级（Lv1-Lv5），与 -d 同时使用；缺省为 1
       addPoints: 增加或减少的用户点数（支持负数）
       refreshPoints: 刷新用户的点数
       cancel: 取消会员资格
@@ -204,6 +207,8 @@ commands:
       member-daily-limit-reached: 您今日的会员使用次数已达上限({0}次)，请明天再来。
       membership-expired: 您的会员已过期，已恢复为普通用户权限。
       membership-active: 您当前是会员用户，每日可使用{0}次，剩余{1}次。
+      tier-active: 您当前是 Lv{0} 会员，每日可使用{1}次，剩余{2}次。
+      tier-active-unlimited: 您当前是 Lv{0} 会员，可无限次使用。
       non-member-usage: 您当前是普通用户，每日可使用{0}次，今日已使用{1}次，剩余{2}次。
       cooldown: 绘图CD中，请等待{0}秒后再试。
       response-error: 发生未知错误 ({0})。

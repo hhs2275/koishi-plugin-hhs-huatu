@@ -87,6 +87,8 @@ commands:
       member-daily-limit-reached: 本日の会員利用上限 ({0}回) に達しました。
       membership-expired: 会員資格が期限切れになりました。
       membership-active: 現在会員です、1日あたり{0}回利用可能、残り{1}回。
+      tier-active: 現在Lv{0}会員です、1日あたり{1}回利用可能、残り{2}回。
+      tier-active-unlimited: 現在Lv{0}会員です、無制限に利用できます。
       non-member-usage: 現在通常ユーザーです、1日あたり{0}回利用可能、本日{1}回使用済み、残り{2}回。
       cooldown: 描画クールダウン中です、{0}秒お待ちください。
       inpaint-step1: 元の画像が暗くなりました。再描画したい領域に白く塗り、120秒以内に送り返してください。
@@ -165,6 +167,7 @@ commands:
     options:
       user: 対象ユーザーID
       days: 追加または設定するメンバーシップの日数
+      tier: 会員レベル（Lv1-Lv5）、-d と併用；デフォルトは 1
       addPoints: 追加または削減するポイント（負の数もサポート）
       refreshPoints: ユーザーのポイントを更新する
       cancel: メンバーシップをキャンセルする
@@ -195,6 +198,8 @@ commands:
       member-daily-limit-reached: 会員利用上限 ({0}回) に達しました。
       membership-expired: 会員資格が期限切れになりました。
       membership-active: 会員です、1日{0}回、残り{1}回。
+      tier-active: 現在Lv{0}会員です、1日あたり{1}回利用可能、残り{2}回。
+      tier-active-unlimited: 現在Lv{0}会員です、無制限に利用できます。
       non-member-usage: 通常ユーザー、1日{0}回、使用{1}回、残り{2}回。
       cooldown: クールダウン中、{0}秒お待ちください。
       response-error: エラー ({0})。
