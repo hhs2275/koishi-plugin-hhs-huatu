@@ -321,7 +321,12 @@ export interface Config extends PromptConfig, ParamConfig {
   imageReviewFailAction?: 'block' | 'ignore'
   muteOnReviewFailed?: boolean
   muteTime?: number
-  // 群聊过滤配置
+  // 审核范围配置
+  /** 是否审核私聊生成的图片，默认关闭以保持原有行为 */
+  reviewPrivate?: boolean
+  /** 不启用审核的群 ID 列表，优先级高于 enabledGroups */
+  excludedGroups?: string[]
+  /** 启用审核的群 ID 列表，为空表示所有未被排除的群 */
   enabledGroups?: string[]
 
   imageAudit?: {
@@ -663,7 +668,9 @@ export const Config = Schema.intersect([
     ]).description('审核失败时的处理方式').default('ignore'),
     muteOnReviewFailed: Schema.boolean().description('审核未通过时是否禁言用户').default(false),
     muteTime: Schema.number().description('禁言时长（秒）').default(60),
-    enabledGroups: Schema.array(Schema.string()).description('启用图片审核的群ID列表，为空则在所有群启用').default([]),
+    reviewPrivate: Schema.boolean().description('是否审核私聊生成的图片').default(false),
+    enabledGroups: Schema.array(Schema.string()).description('启用图片审核的群ID列表，为空则在所有未排除的群启用').default([]),
+    excludedGroups: Schema.array(Schema.string()).description('不启用图片审核的群ID列表，优先级高于启用群列表').default([]),
     imageAudit: Schema.object({
       engine: Schema.union([
         Schema.const('tencent').description('腾讯云图片审核'),

@@ -878,13 +878,17 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
       if (!dataUrl.trim()) return await session.send(session.text('commands.novelai.messages.empty-response'))
 
       // 图片审核
-      // 检查是否启用了审核功能，以及当前群聊是否在启用审核的群列表中
-      const shouldReview = runtime.config.imageReviewEnabled &&
-        session.guildId &&
-        (!runtime.config.enabledGroups ||
-          !runtime.config.enabledGroups.length ||
-          runtime.config.enabledGroups.includes(session.guildId)
-        );
+      // 审核范围：总开关 → 私聊开关/群聊过滤 → 排除群列表。
+      // excludedGroups 优先级高于 enabledGroups；空 enabledGroups 表示所有未排除的群。
+      const enabledGroups = runtime.config.enabledGroups || []
+      const excludedGroups = runtime.config.excludedGroups || []
+      const shouldReview = Boolean(
+        runtime.config.imageReviewEnabled &&
+        (session.guildId
+          ? !excludedGroups.includes(session.guildId) &&
+            (!enabledGroups.length || enabledGroups.includes(session.guildId))
+          : runtime.config.reviewPrivate === true)
+      )
 
       if (shouldReview) {
         try {
