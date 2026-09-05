@@ -290,6 +290,8 @@ export interface Config extends PromptConfig, ParamConfig {
   membershipAuthLv?: number
   nai5MemberOnly?: boolean
   memberNai5DailyLimit?: number
+  /** nai5 周额度模式：每日免费次数当天不清零，自动累积，最多保留 7 天 */
+  nai5WeeklyBucketEnabled?: boolean
   nonMemberCooldown?: number
   memberCooldown?: number
   memberCleanupEnabled?: boolean
@@ -414,7 +416,7 @@ export const Config = Schema.intersect([
         }),
       ]),
       Schema.object({
-        apiEndpoint: Schema.string().description('API 服务器地址。').default('https://api.novelai.net'),
+        apiEndpoint: Schema.string().description('API 服务器地址。').default('https://image.novelai.net'),
         endpoint: Schema.string().description('图片生成服务器地址。').default('https://image.novelai.net'),
         headers: Schema.dict(String).role('table').description('要附加的额外请求头。').default({
           'referer': 'https://novelai.net/',
@@ -602,6 +604,7 @@ export const Config = Schema.intersect([
     membershipAuthLv: Schema.number().description('设置会员状态所需的权限等级').default(3),
     nai5MemberOnly: Schema.boolean().description('仅允许会员使用 nai5 / nai5c。V5 会消耗 NovelAI 配额，开启后非会员将收到提示并无法使用。需先启用会员系统。').default(true),
     memberNai5DailyLimit: Schema.number().description('会员每日 nai5 / nai5c 免费次数，设为 0 表示不额外限制。超出后按 Anlas 估算扣除本地点数（标准分辨率也会扣点，与 NovelAI 配额耗尽后的计费一致）。需同时启用点数控制。').default(0).min(0),
+    nai5WeeklyBucketEnabled: Schema.boolean().description('开启周额度模式：免费次数当天不清零，自动累积最多 7 天，用完才按 Anlas 估算扣点。需先启用会员系统。').default(false),
     nonMemberCooldown: Schema.number().description('非会员每张图的CD时间（秒）').default(60),
     memberCooldown: Schema.number().description('会员每张图的CD时间（秒），设为0表示无CD').default(0),
     memberCleanupEnabled: Schema.boolean().description('是否启用过期会员信息自动清理').default(true),

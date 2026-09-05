@@ -82,6 +82,9 @@ export class MembershipSystem {
       lastDrawTime: 'unsigned',
       points: 'integer',
       nai5DailyUsage: 'unsigned',
+      nai5Bucket: 'unsigned',
+      nai5BucketDay: 'unsigned',
+      nai5DepositTier: 'unsigned',
     }, {
       autoInc: true,
       unique: ['visitorId'],
@@ -126,6 +129,9 @@ export class MembershipSystem {
           lastDrawTime: row.lastDrawTime,
           points: row.points,
           nai5DailyUsage: row.nai5DailyUsage || 0,
+          nai5Bucket: row.nai5Bucket || 0,
+          nai5BucketDay: row.nai5BucketDay || 0,
+          nai5DepositTier: row.nai5DepositTier || 0,
         }
       }
       this.ctx.logger.info(`会员系统数据从数据库加载成功，共 ${loadedCount} 条记录`)
@@ -261,6 +267,9 @@ export class MembershipSystem {
         lastDrawTime: user.lastDrawTime || 0,
         points: user.points || 0,
         nai5DailyUsage: user.nai5DailyUsage || 0,
+        nai5Bucket: user.nai5Bucket || 0,
+        nai5BucketDay: user.nai5BucketDay || 0,
+        nai5DepositTier: user.nai5DepositTier || 0,
       }], ['visitorId'])
       if (this.config.debugLog) this.ctx.logger.info(`用户 ${userId} 数据已同步到数据库`)
     } catch (err) {
@@ -284,6 +293,9 @@ export class MembershipSystem {
           lastDrawTime: user.lastDrawTime || 0,
           points: user.points || 0,
           nai5DailyUsage: user.nai5DailyUsage || 0,
+          nai5Bucket: user.nai5Bucket || 0,
+          nai5BucketDay: user.nai5BucketDay || 0,
+          nai5DepositTier: user.nai5DepositTier || 0,
         })
       }
       if (rows.length > 0) {
@@ -383,6 +395,36 @@ export class MembershipSystem {
     const prevTier = this.getActiveTier(userId)
     const wasActiveMember = prevTier > 0
 
+    // nai5 周桶：从非会员激活为会员时，确保「今日入账」反映本次所授档位。
+    // - 今日尚未入账（新会员 / 回归会员）：冻结余额保留 + 按新档入账今天一份；离开期间绝不按缺席天数补齐
+    // - 今日已按旧档入过账（同日先取消旧卡再授新卡的升级流程）：新档 > 今日入账档时补当日档位差，
+    //   同档/低档不补（防反复取消重授刷桶）；nai5DepositTier 只升不降
+    // 必须在卡片生效、checkAndResetDailyUsage 触发惰性入账之前执行，否则会把离开天数误补。
+    if (this.isNai5BucketEnabled() && !wasActiveMember && safeTier > 0) {
+      const todayStart = this.getTodayStart()
+      const newLimit = this.getTierBenefit(safeTier).nai5DailyLimit
+      const depositedToday = user.nai5BucketDay === todayStart && (user.nai5DepositTier || 0) > 0
+      if (depositedToday) {
+        const depositedLimit = this.getTierBenefit(user.nai5DepositTier).nai5DailyLimit
+        const diff = Math.max(0, newLimit - depositedLimit)
+        if (diff > 0) {
+          const target = Math.min(newLimit * 7, (user.nai5Bucket || 0) + diff)
+          const before = user.nai5Bucket || 0
+          user.nai5Bucket = Math.max(before, target)
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 授予 Lv${safeTier}（同日换档），周额度补当日档位差 +${diff}（${before} → ${user.nai5Bucket}）`)
+        }
+        user.nai5DepositTier = Math.max(user.nai5DepositTier, safeTier)
+      } else {
+        user.nai5BucketDay = todayStart
+        user.nai5DepositTier = safeTier
+        if (newLimit > 0) {
+          const before = user.nai5Bucket || 0
+          user.nai5Bucket = Math.min(newLimit * 7, before + newLimit)
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 激活为 Lv${safeTier}，周额度到账当日额度 +${newLimit}（${before} → ${user.nai5Bucket}）`)
+        }
+      }
+    }
+
     const cards = this.getCards(userId)
     const existing = cards.find(card => card.tier === safeTier && card.expiry > now)
     let renewed = false
@@ -412,6 +454,36 @@ export class MembershipSystem {
 
     // 重算冗余字段（isMember / membershipExpiry / dailyLimit）
     this.checkAndResetDailyUsage(userId)
+
+    // nai5 周桶：升档当天补齐档位差（今日已按旧档入账时）。
+    // 补差 = max(0, 新档日限 − 当日实际入账档的日限)：点数支付的部分从不扣桶，因此不会重复计算；
+    // nai5DepositTier 只升不降 → 同日降档再升回、取消后重授同档都补差为 0，刷不出桶。
+    // 升档时若当日尚未入账（nai5BucketDay ≠ 今天），不在此补——下次惰性入账直接按新档日限入桶。
+    if (this.isNai5BucketEnabled() && wasActiveMember && safeTier > prevTier) {
+      const todayStart = this.getTodayStart()
+      const newLimit = this.getTierBenefit(safeTier).nai5DailyLimit
+      if (user.nai5BucketDay === todayStart) {
+        const depositedLimit = this.getTierBenefit(user.nai5DepositTier || prevTier).nai5DailyLimit
+        const diff = Math.max(0, newLimit - depositedLimit)
+        if (diff > 0) {
+          // max 兜底：补差永不缩水（防御非单调档位配置等极端情况下 min 上限夹紧反而扣减余额）
+          const target = Math.min(newLimit * 7, (user.nai5Bucket || 0) + diff)
+          const before = user.nai5Bucket || 0
+          user.nai5Bucket = Math.max(before, target)
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 升级至 Lv${safeTier}，周额度补当日档位差 +${diff}（${before} → ${user.nai5Bucket}）`)
+        }
+        user.nai5DepositTier = Math.max(user.nai5DepositTier || 0, safeTier)
+      } else {
+        // 今日尚未入账（旧档 limit=0 时惰性入账不触发等）：直接按新档入账今天一份
+        user.nai5BucketDay = todayStart
+        user.nai5DepositTier = safeTier
+        if (newLimit > 0) {
+          const before = user.nai5Bucket || 0
+          user.nai5Bucket = Math.min(newLimit * 7, before + newLimit)
+          this.ctx.logger.info(`[会员系统] 用户 ${userId} 升级至 Lv${safeTier}，周额度到账当日额度 +${newLimit}（${before} → ${user.nai5Bucket}）`)
+        }
+      }
+    }
 
     // 点数处理（已开点数系统时）
     if (this.config.pointsEnabled) {
@@ -1117,6 +1189,9 @@ export class MembershipSystem {
         dailyLimit: this.config.nonMemberDailyLimit,
         points: 0,
         nai5DailyUsage: 0,
+        nai5Bucket: 0,
+        nai5BucketDay: 0,
+        nai5DepositTier: 0,
         cards: [],
       }
     }
@@ -1165,6 +1240,43 @@ export class MembershipSystem {
           user.points = 0
         }
         this.ctx.logger.info(`[会员系统] 用户 ${userId} 的会员卡已全部到期，降为非会员`)
+      }
+    }
+
+    // ========== nai5 周桶维护（nai5WeeklyBucketEnabled 开启时生效） ==========
+    // - 首次接触（nai5BucketDay=0）按「当日剩余」做存量种子：会员 bucket = max(0, 当日 limit − 当日已用)，非会员 0
+    // - 有效会员且当日未入账：缺席 daysMissed 天一次补齐（封顶 7×limit，数学上等价于逐日入账+溢出作废）
+    // - 非会员桶冻结保留、停止入账；回归当天由 grantMembershipCard 的激活入账补一份，避免把离开天数误补
+    if (this.isNai5BucketEnabled()) {
+      const todayStart = this.getTodayStart(new Date(nowMs))
+      const bucketDay = user.nai5BucketDay || 0
+      if (!bucketDay) {
+        const seedLimit = activeTier > 0 ? this.getTierBenefit(activeTier).nai5DailyLimit : 0
+        user.nai5Bucket = seedLimit > 0 ? Math.max(0, seedLimit - (user.nai5DailyUsage || 0)) : 0
+        user.nai5BucketDay = todayStart
+        user.nai5DepositTier = activeTier
+      } else if (bucketDay < todayStart && activeTier > 0) {
+        const limit = this.getTierBenefit(activeTier).nai5DailyLimit
+        if (limit > 0) {
+          const daysMissed = Math.max(1, Math.min(7, Math.round((todayStart - bucketDay) / 86400000)))
+          user.nai5Bucket = Math.min(limit * 7, (user.nai5Bucket || 0) + limit * daysMissed)
+          user.nai5BucketDay = todayStart
+          user.nai5DepositTier = activeTier
+        }
+      } else if (bucketDay > todayStart) {
+        // 时钟回拨：仅重锚基准日，不重复入账
+        user.nai5BucketDay = todayStart
+      }
+
+      // 上限不变量：会员的桶余额永不高于当前生效档的 7×日限。
+      // 降档 / 高等级卡到期回落 / tierBenefits 调低时立即收缩，而不是等到下次入账日
+      //（当日降档时 bucketDay === 今天、不触发入账分支，若无此夹紧超限余额可全天使用）。
+      // 非会员（activeTier=0）不夹紧：冻结余额在续费时由激活入账按新档上限收缩。
+      if (activeTier > 0) {
+        const cap = this.getTierBenefit(activeTier).nai5DailyLimit * 7
+        if (cap > 0 && (user.nai5Bucket || 0) > cap) {
+          user.nai5Bucket = cap
+        }
       }
     }
   }
@@ -1256,9 +1368,110 @@ export class MembershipSystem {
     return this.userData[userId]?.nai5DailyUsage || 0
   }
 
+  // nai5 周桶模式是否启用（需会员系统同时开启）
+  isNai5BucketEnabled(): boolean {
+    return !!this.config.membershipEnabled && !!this.config.nai5WeeklyBucketEnabled
+  }
+
+  // 今日本地 0 点时间戳（与惰性重置的本地日期语义保持一致）
+  private getTodayStart(now: Date = new Date()): number {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  }
+
   /**
-   * 本次 nai5 任务中，超出会员免费日限、需要按 Anlas 计费的张数。
-   * 日限按用户生效等级取值；日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）。
+   * 周桶展示信息（供指令展示）。
+   * 未启用周桶 / 非会员 / 该档不限次数（limit=0，无桶概念）时返回 null。
+   */
+  getNai5BucketInfo(userId: string): { balance: number; cap: number; dailyLimit: number } | null {
+    if (!this.isNai5BucketEnabled()) return null
+    const tier = this.getActiveTier(userId)
+    if (tier <= 0) return null
+    const limit = this.getTierBenefit(tier).nai5DailyLimit
+    if (limit <= 0) return null
+    return {
+      balance: this.userData[userId]?.nai5Bucket || 0,
+      cap: limit * 7,
+      dailyLimit: limit,
+    }
+  }
+
+  /**
+   * 批量给有效会员的周桶补天数额度（发福利）。
+   * 每人按其生效档日限 × days 入桶，受各自 7×limit 上限约束（满桶溢出作废）。
+   * @param days 补几天（1-30，默认 1）
+   * @param tierFilter 仅操作该生效等级会员；缺省操作全部有效会员
+   * @param targetUserId 仅操作指定用户（单人补桶）
+   */
+  async addBucketDaysToAllMembers(
+    days: number = 1,
+    tierFilter?: number,
+    targetUserId?: string
+  ): Promise<{ total: number; topped: number; overflow: number; skipped: number; message: string }> {
+    const fail = (message: string) => ({ total: 0, topped: 0, overflow: 0, skipped: 0, message })
+    if (!this.config.membershipEnabled) return fail('会员系统未启用')
+    if (!this.isNai5BucketEnabled()) return fail('周额度模式未启用（需在配置中开启「周额度模式」）')
+
+    const safeDays = Math.max(1, Math.min(30, Math.round(days || 1)))
+    if (targetUserId && !this.userData[targetUserId]) {
+      return fail(`用户 ${targetUserId} 不存在`)
+    }
+
+    let topped = 0
+    let overflow = 0
+    let skipped = 0
+    for (const userId in this.userData) {
+      if (targetUserId && userId !== targetUserId) continue
+      const tier = this.getActiveTier(userId)
+      if (tier <= 0) continue
+      if (tierFilter !== undefined && tier !== tierFilter) { skipped++; continue }
+      const limit = this.getTierBenefit(tier).nai5DailyLimit
+      if (limit <= 0) { skipped++; continue } // 不限档无桶概念，无需补
+
+      const user = this.userData[userId]
+      const cap = limit * 7
+      const before = user.nai5Bucket || 0
+      const after = Math.min(cap, before + limit * safeDays)
+      if (after > before) topped++
+      else overflow++
+      user.nai5Bucket = after
+      await this.syncUserToDB(userId)
+    }
+
+    const scope = targetUserId
+      ? `用户 ${targetUserId}`
+      : (tierFilter !== undefined ? `Lv${tierFilter} 会员` : '所有有效会员')
+    let message = `✅ 赠送完成（${scope}，每人赠 ${safeDays} 天额度，按各自档位每日额度到账）：成功 ${topped} 人`
+    if (overflow > 0) message += `，已达上限 ${overflow} 人`
+    if (skipped > 0) message += `，跳过 ${skipped} 人（档位不限或等级不符）`
+    return { total: topped + overflow, topped, overflow, skipped, message }
+  }
+
+  // 设置指定用户的周桶余额（调试/客服用；不改动入账基准日与档位记录）。
+  // 会员请求值超过当前档上限（7×日限）时按上限落地并在消息中说明；
+  // 非会员桶为冻结态不夹紧，续费时由激活入账按新档上限收缩。
+  async setNai5Bucket(userId: string, amount: number): Promise<{ success: boolean; message: string }> {
+    if (!this.isNai5BucketEnabled()) {
+      return { success: false, message: '周额度模式未启用（需在配置中开启「周额度模式」）' }
+    }
+    if (!this.userData[userId]) {
+      return { success: false, message: `用户 ${userId} 不存在` }
+    }
+    const tier = this.getActiveTier(userId) // 内部触发维护：超限存量余额先按当前档收缩
+    const cap = tier > 0 ? this.getTierBenefit(tier).nai5DailyLimit * 7 : 0
+    const requested = Math.max(0, Math.round(amount))
+    const value = cap > 0 ? Math.min(requested, cap) : requested
+    this.userData[userId].nai5Bucket = value
+    await this.syncUserToDB(userId)
+    const capNote = cap > 0 && requested > cap
+      ? `（请求 ${requested} 超过当前 Lv${tier} 档上限 ${cap}，已按上限设置）`
+      : ''
+    return { success: true, message: `✅ 已设置用户 ${userId} 的免费次数余额为 ${value}${capNote}` }
+  }
+
+  /**
+   * 本次 nai5 任务中，超出会员免费额度、需要按 Anlas 计费的张数。
+   * - 周桶模式：可用 = 桶余额 − 并发预占，超出可用部分计费（点数支付的部分不扣桶）
+   * - 旧模式：日限按用户生效等级取值；日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）
    */
   getNai5OverageCount(userId: string, drawCount: number = 1): number {
     if (!this.config.membershipEnabled) return 0
@@ -1266,6 +1479,11 @@ export class MembershipSystem {
     if (limit <= 0 || drawCount <= 0) return 0
     if (!this.isActiveMember(userId)) return 0
 
+    if (this.isNai5BucketEnabled()) {
+      const bucket = this.userData[userId]?.nai5Bucket || 0
+      const available = Math.max(0, bucket - (this.pendingNai5Usage[userId] || 0))
+      return Math.max(0, drawCount - available)
+    }
     const used = this.getNai5DailyUsage(userId) + (this.pendingNai5Usage[userId] || 0)
     return Math.min(drawCount, Math.max(0, used + drawCount - limit))
   }
@@ -1306,6 +1524,10 @@ export class MembershipSystem {
     if (this.isNai5Model(model)) {
       const add = nai5Count ?? drawCount
       this.userData[userId].nai5DailyUsage = (this.userData[userId].nai5DailyUsage || 0) + add
+      if (this.isNai5BucketEnabled()) {
+        // 周桶模式：从桶余额扣除（点数支付的次数从不扣桶）
+        this.userData[userId].nai5Bucket = Math.max(0, (this.userData[userId].nai5Bucket || 0) - add)
+      }
       this.releaseNai5Usage(userId, add)
     }
 

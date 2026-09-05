@@ -252,11 +252,20 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
 
         let nai5Info = ''
         if (benefit.nai5DailyLimit > 0) {
-          const nai5Used = user.nai5DailyUsage || 0
-          const nai5Remaining = Math.max(0, benefit.nai5DailyLimit - nai5Used)
-          nai5Info = `\nnai5/nai5c 今日免费：${benefit.nai5DailyLimit} 次，已用 ${nai5Used} 次，剩余 ${nai5Remaining} 次`
-          if (config.pointsEnabled && nai5Remaining === 0) {
-            nai5Info += '（超出后按 Anlas 估算扣点）'
+          const bucketInfo = membershipSystem.getNai5BucketInfo(targetId)
+          if (bucketInfo) {
+            // 周桶模式：展示桶余额 / 上限 / 每日入桶
+            nai5Info = `\nnai5/nai5c 免费次数余额：${bucketInfo.balance} / 上限 ${bucketInfo.cap} 次（每日到账 ${bucketInfo.dailyLimit} 次，最多累积 7 天）`
+            if (config.pointsEnabled && bucketInfo.balance === 0) {
+              nai5Info += '（用完后按 Anlas 估算扣点）'
+            }
+          } else {
+            const nai5Used = user.nai5DailyUsage || 0
+            const nai5Remaining = Math.max(0, benefit.nai5DailyLimit - nai5Used)
+            nai5Info = `\nnai5/nai5c 今日免费：${benefit.nai5DailyLimit} 次，已用 ${nai5Used} 次，剩余 ${nai5Remaining} 次`
+            if (config.pointsEnabled && nai5Remaining === 0) {
+              nai5Info += '（超出后按 Anlas 估算扣点）'
+            }
           }
         }
 
@@ -313,6 +322,9 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
       .option('addPoints', '--add-points <amount:number> 给会员加点数（配合 -t 仅操作指定等级）')
       .option('subPoints', '--sub-points <amount:number> 给会员减点数（配合 -t 仅操作指定等级）')
       .option('setPoints', '--set-points <value:string> 设置指定用户点数，格式: 用户ID:点数')
+      .option('addBucket', '--add-bucket [days:number] 给会员赠送免费次数（发福利：每人按各自档位每日额度 × 天数到账，受 7 天上限约束；配合 -t 指定等级、--bucket-user 指定单人）')
+      .option('bucketUser', '--bucket-user <userId:string> 配合 --add-bucket 仅给指定用户赠送')
+      .option('setBucket', '--set-bucket <value:string> 设置指定用户免费次数余额，格式: 用户ID:次数')
       .option('importData', '--import 从 JSON 文件导入数据')
       .action(async ({ session, options }) => {
         // 如果会员系统未启用
@@ -340,6 +352,38 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           return result.message
         }
 
+        // 周桶补桶（发福利：每人按各自生效档日限 × 天数入桶，满桶溢出作废）
+        if (options.addBucket !== undefined) {
+          if (!config.nai5WeeklyBucketEnabled) {
+            return '❌ 周额度模式未启用（需在配置中开启「周额度模式」）'
+          }
+          const days = options.addBucket || 1
+          const scope = options.bucketUser
+            ? `用户 ${options.bucketUser}`
+            : (debugTierFilter !== undefined ? `Lv${debugTierFilter} 会员` : '所有有效会员')
+          await session.send(`正在为${scope}赠送 ${days} 天免费次数...`)
+          const result = await membershipSystem.addBucketDaysToAllMembers(days, debugTierFilter, options.bucketUser)
+          return result.message
+        }
+
+        // 设置指定用户周桶余额
+        if (options.setBucket !== undefined) {
+          if (!config.nai5WeeklyBucketEnabled) {
+            return '❌ 周额度模式未启用（需在配置中开启「周额度模式」）'
+          }
+          const parts = options.setBucket.split(':')
+          if (parts.length !== 2) {
+            return '❌ 格式错误，请使用格式: 用户ID:次数\n例如: --set-bucket 123456:140'
+          }
+          const [bucketUserId, bucketStr] = parts
+          const amount = parseInt(bucketStr)
+          if (isNaN(amount) || amount < 0) {
+            return '❌ 余额必须为非负整数'
+          }
+          const result = await membershipSystem.setNai5Bucket(bucketUserId, amount)
+          return result.message
+        }
+
         // 重置指定用户的使用次数
         if (options.resetUsage) {
           const targetId = options.resetUsage
@@ -355,9 +399,12 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           const dailyLimit = tier > 0 ? benefit.dailyLimit : config.nonMemberDailyLimit
           const remaining = dailyLimit === 0 ? '无限' : dailyLimit - user.dailyUsage
           const nai5Limit = tier > 0 ? benefit.nai5DailyLimit : 0
-          const nai5Line = nai5Limit > 0
-            ? `\nnai5/nai5c 每日免费：${nai5Limit} 次\nnai5 已使用：${user.nai5DailyUsage || 0} 次`
-            : ''
+          const bucketInfo = membershipSystem.getNai5BucketInfo(targetId)
+          const nai5Line = bucketInfo
+            ? `\nnai5/nai5c 免费次数余额：${bucketInfo.balance} / 上限 ${bucketInfo.cap} 次（每日到账 ${bucketInfo.dailyLimit} 次）`
+            : nai5Limit > 0
+              ? `\nnai5/nai5c 每日免费：${nai5Limit} 次\nnai5 已使用：${user.nai5DailyUsage || 0} 次`
+              : ''
 
           return `✅ 已重置用户 ${targetId} 的使用次数\n` +
             `当前状态：${tier > 0 ? `Lv${tier} 会员` : '非会员'}\n` +
@@ -442,6 +489,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           // 各等级持卡统计（按生效等级）
           statusMsg += `\n【等级分布】\n`
           statusMsg += `等级制度：${config.tierEnabled ? '已启用' : '未启用（所有会员按 Lv1 生效）'}\n`
+          statusMsg += `周额度模式：${config.nai5WeeklyBucketEnabled ? '已启用（免费次数当天不清零，最多累积 7 天）' : '未启用（每日免费次数当天清零）'}\n`
           const tierStats = membershipSystem.getActiveTierStats()
           for (let tier = 1; tier <= 5; tier++) {
             const benefit = membershipSystem.getTierBenefit(tier)
@@ -563,7 +611,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         }
 
         // 如果没有指定任何选项，显示帮助
-        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态（含等级分布）\n-u 重置指定用户的使用次数\n-a <天数> 给会员增加天数（加 -t <等级> 仅操作该等级会员）\n-t <等级> 配合批量操作指定生效等级\n-f 立即刷新点数（按生效等级；加 -t 仅刷新该等级会员）\n--add-points <点数> 给会员加点（可配 -t）\n--sub-points <点数> 给会员减点（可配 -t）\n--set-points <用户ID:点数> 设置指定用户点数\n--import 从 JSON 导入数据'
+        return '请使用以下选项：\n-c 立即执行会员信息清理\n-r 立即执行会员到期提醒\n-s 查看定时任务状态（含等级分布）\n-u 重置指定用户的使用次数\n-a <天数> 给会员增加天数（加 -t <等级> 仅操作该等级会员）\n-t <等级> 配合批量操作指定生效等级\n-f 立即刷新点数（按生效等级；加 -t 仅刷新该等级会员）\n--add-points <点数> 给会员加点（可配 -t）\n--sub-points <点数> 给会员减点（可配 -t）\n--set-points <用户ID:点数> 设置指定用户点数\n--add-bucket [天数] 给会员赠送免费次数（发福利，按各自档位每日额度到账；可配 -t / --bucket-user）\n--bucket-user <用户ID> 配合 --add-bucket 仅给指定用户赠送\n--set-bucket <用户ID:次数> 设置指定用户免费次数余额\n--import 从 JSON 导入数据'
       })
   }
 }

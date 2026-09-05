@@ -151,7 +151,9 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
             ? session.text('commands.novelai.messages.points-deducted', [redrawDeductedPoints])
             : ''
           const overageInfo = nai5Overage
-            ? session.text('commands.novelai.messages.nai5-overage-charged')
+            ? session.text(membershipSystem.isNai5BucketEnabled()
+              ? 'commands.novelai.messages.nai5-bucket-exhausted'
+              : 'commands.novelai.messages.nai5-overage-charged')
             : ''
           await session.send([queueMsg + pointsInfo, overageInfo].filter(Boolean).join('\n'))
 

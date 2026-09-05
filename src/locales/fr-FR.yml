@@ -84,6 +84,7 @@ commands:
       unauthorized: Token non autorisé, l'abonnement peut nécessiter un renouvellement. Veuillez contacter l'administrateur.
       nai5-member-only: nai5 / nai5c consomme le quota NovelAI et est réservé aux membres. Veuillez devenir membre ou changer de modèle.
       nai5-overage-charged: Le quota gratuit nai5/nai5c du jour est épuisé. Cette requête sera facturée selon l'estimation Anlas.
+      nai5-bucket-exhausted: Le quota gratuit nai5/nai5c est épuisé. Cette requête sera facturée selon l'estimation Anlas.
       daily-limit-reached: Votre limite quotidienne ({0} fois) a été atteinte. Veuillez devenir membre ou revenir demain.
       member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
       membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.
@@ -197,6 +198,7 @@ commands:
       unauthorized: Token non autorisé, l'abonnement peut nécessiter un renouvellement. Veuillez contacter l'administrateur.
       nai5-member-only: nai5 / nai5c consomme le quota NovelAI et est réservé aux membres. Veuillez devenir membre ou changer de modèle.
       nai5-overage-charged: Le quota gratuit nai5/nai5c du jour est épuisé. Cette requête sera facturée selon l'estimation Anlas.
+      nai5-bucket-exhausted: Le quota gratuit nai5/nai5c est épuisé. Cette requête sera facturée selon l'estimation Anlas.
       daily-limit-reached: Votre limite quotidienne ({0} fois) a été atteinte. Veuillez devenir membre ou revenir demain.
       member-daily-limit-reached: Votre limite quotidienne de membre ({0} fois) a été atteinte, veuillez revenir demain.
       membership-expired: Votre adhésion a expiré, vous avez été rétrogradé aux privilèges d'utilisateur normal.

@@ -325,7 +325,9 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
           ? session.text('commands.novelai.messages.points-deducted', [pointsCost])
           : ''
         const overageInfo = nai5Overage
-          ? session.text('commands.novelai.messages.nai5-overage-charged')
+          ? session.text(membershipSystem.isNai5BucketEnabled()
+            ? 'commands.novelai.messages.nai5-bucket-exhausted'
+            : 'commands.novelai.messages.nai5-overage-charged')
           : ''
         const charged = queueMsg ? queueMsg + pointsInfo : pointsInfo.replace(/^[,，、]\s*/, '')
         const notice = [charged, overageInfo].filter(Boolean).join('\n').trim()

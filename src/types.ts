@@ -126,7 +126,10 @@ export interface UserData {
   dailyLimit: number // 每日使用上限
   lastDrawTime?: number // 时间戳，上次绘图时间，用于计算CD
   points?: number // 当前点数
-  nai5DailyUsage?: number // 当日 nai5 / nai5c 使用次数
+  nai5DailyUsage?: number // 当日 nai5 / nai5c 使用次数（周桶模式下仅作统计）
+  nai5Bucket?: number // nai5 周桶余额（张），nai5WeeklyBucketEnabled 开启时使用
+  nai5BucketDay?: number // 周桶上次入账日（本地 0 点时间戳，0 = 未初始化/待种子）
+  nai5DepositTier?: number // 当日最近一次周桶入账/补差所用档位（0 = 无；升档补差与防刷依据）
   cards?: MembershipCard[] // 会员卡列表（内存缓存；数据库独立存储于 hhs_huatu_membership_cards）
 }
 
@@ -142,6 +145,9 @@ export interface HhsHuatuUser {
   lastDrawTime: number
   points: number
   nai5DailyUsage: number
+  nai5Bucket: number
+  nai5BucketDay: number
+  nai5DepositTier: number
 }
 
 // 会员卡数据库表结构
