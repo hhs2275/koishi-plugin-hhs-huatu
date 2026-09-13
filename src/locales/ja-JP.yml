@@ -27,6 +27,7 @@ commands:
       scale: CFGスケールを設定
       rescale: CFGリスケール補正 (0-1)
       strength: 画像変更強度
+      variety: Variety+ を有効化
       noise: 画像ノイズ強度
       hiresFix: 高解像度修正を有効
       undesired: ネガティブタグ

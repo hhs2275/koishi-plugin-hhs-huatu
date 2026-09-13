@@ -27,6 +27,7 @@ commands:
       scale: 設定對輸入的服從度
       rescale: 輸入服從度調整規模（0-1）
       strength: 圖像修改幅度
+      variety: 開啟Variety+
       noise: 圖像雜訊強度
       hiresFix: 啟用高解析度修復
       undesired: 排除標籤

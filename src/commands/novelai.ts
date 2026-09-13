@@ -34,7 +34,10 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
     { pattern: /-R\s+([\d.]+)/g, key: 'rescale' },
     { pattern: /-n\s+([\d.]+)/g, key: 'noise' },
     { pattern: /-N\s+([\d.]+)/g, key: 'strength' },
-    { pattern: /-v\s+([\d.]+)/g, key: 'skipCfgAboveSigma' },
+    // Variety+ 纯开关：裸 -v 即开启；兼容旧写法 "-v <数值>"（数值一并吞掉，不再使用）。
+    // 前瞻要求 -v 前是行首/空白、后不能紧跟词字符，避免误吞 "-very" 之类文本；
+    // "-v 1girl" 中的 "1girl" 因数字组后瞻失配而完整保留。
+    { pattern: /(?:^|\s)-v(?:\s+[\d.]+(?=\s|$))?(?![\w-])/g, key: 'variety', value: true },
     { pattern: /-H\s*/g, key: 'hiresFix', value: true },
     { pattern: /-S\s*/g, key: 'smea', value: true },
     { pattern: /-d\s*/g, key: 'smeaDyn', value: true },
@@ -60,9 +63,9 @@ function extractOptionsFromUndesired(undesired: string): { cleanedUndesired: str
     }
   }
 
-  // 清理多余的空白和可能残留的引号
+  // 清理多余的空白和可能残留的引号（含工作站使用的中文引号 “ ” 与 ‘ ’）
   cleanedUndesired = cleanedUndesired.replace(/\s+/g, ' ').trim()
-  cleanedUndesired = cleanedUndesired.replace(/^["']|["']$/g, '').trim()
+  cleanedUndesired = cleanedUndesired.replace(/^["'“‘]|["'”’]$/g, '').trim()
 
   return { cleanedUndesired, extractedOptions }
 }
@@ -128,7 +131,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .option('rescale', '-R <rescale:number>')
     .option('noise', '-n <noise:number>', { hidden: thirdParty })
     .option('strength', '-N <strength:number>')
-    .option('skipCfgAboveSigma', '-v <skipCfgAboveSigma:number>')
+    .option('variety', '-v') // NovelAI Variety+：纯开关，值由插件按模型与分辨率自动计算；官网无此开关的模型（v5 等）忽略
     .option('hiresFix', '-H', { hidden: () => config.type !== 'sd-webui' })
     .option('hiresFixSteps', '<step>', { type: step, hidden: () => config.type !== 'sd-webui' })
     .option('smea', '-S', { hidden: () => config.model !== 'nai-v3' })

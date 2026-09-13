@@ -27,6 +27,7 @@ commands:
       scale: 设置对输入的服从度
       rescale: 输入服从度调整规模（0-1）
       strength: 图片修改幅度
+      variety: 开启Variety+
       noise: 图片噪声强度
       hiresFix: 启用高分辨率修复
       undesired: 排除标签

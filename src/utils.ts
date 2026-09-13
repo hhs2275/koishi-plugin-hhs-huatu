@@ -1056,3 +1056,40 @@ export function extractImages(input: string): { input: string; urls: string[] } 
   })
   return { input: cleaned, urls }
 }
+
+// ========== NovelAI Variety+（skip_cfg_above_sigma） ==========
+
+/**
+ * 依据官网前端源码的模型能力表（cfgDelay / cfgDelaySigma）与请求构造器逻辑：
+ *   final = base * sqrt((4 * floor(w/8) * floor(h/8)) / (4 * 104 * 152))
+ * 其中 4·104·152 = 63232 为参考分辨率 832×1216（latent 104×152）的张量大小。
+ * 即：分辨率越大数值越大；832×1216 / 1216×832 时恰等于 base。
+ * 已用官网生成图（V4.5 @1024×1024 → 59.04722600415217）逐位验证。
+ * 官网不提供 Variety+ 开关的模型（v5 / v1 / v2 系列）不在此表内。
+ */
+export const VARIETY_PLUS_BASE: Record<string, number> = {
+  'nai-diffusion-xl': 19,
+  'nai-diffusion-3': 19,
+  'nai-diffusion-3-inpainting': 19,
+  'nai-diffusion-furry-3': 19,
+  'nai-diffusion-furry-3-inpainting': 19,
+  'nai-diffusion-4-curated-preview': 19,
+  'nai-diffusion-4-curated-inpainting': 19,
+  'nai-diffusion-4-full': 19,
+  'nai-diffusion-4-full-inpainting': 19,
+  'nai-diffusion-4-5-curated': 58,
+  'nai-diffusion-4-5-curated-inpainting': 58,
+  'nai-diffusion-4-5-full': 58,
+  'nai-diffusion-4-5-full-inpainting': 58,
+}
+
+export function getVarietyPlusBase(model: string): number | undefined {
+  return VARIETY_PLUS_BASE[model]
+}
+
+export function computeVarietyPlusSigma(base: number, width: number, height: number): number {
+  const lw = Math.floor(width / 8)
+  const lh = Math.floor(height / 8)
+  // 与官网 (w([4, lw, lh]) / 63232) ** 0.5 保持同序运算，保证 IEEE754 逐位一致
+  return base * Math.sqrt((4 * lw * lh) / 63232)
+}

@@ -27,6 +27,7 @@ commands:
       scale: Set CFG Scale
       rescale: CFG Rescale Correction (0-1)
       strength: Image Modification Strength
+      variety: Enable Variety+
       noise: Image Noise Strength
       hiresFix: Enable High Resolution Fix
       undesired: Negative Tags

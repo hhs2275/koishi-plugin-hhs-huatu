@@ -27,6 +27,7 @@ commands:
       scale: Définir l'échelle CFG
       rescale: Correction de redimensionnement CFG (0-1)
       strength: Intensité de modification de l'image
+      variety: Activer Variety+
       noise: Intensité du bruit de l'image
       hiresFix: Activer la correction haute résolution
       undesired: Tags négatifs

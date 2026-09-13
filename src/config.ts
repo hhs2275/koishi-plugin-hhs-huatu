@@ -750,8 +750,8 @@ function cleanUndesiredParameter(undesired: string): string {
     cleaned = cleaned.replace(pattern, '').trim()
   }
 
-  // 移除可能残留的引号
-  cleaned = cleaned.replace(/^["']|["']$/g, '').trim()
+  // 移除可能残留的引号（含工作站使用的中文引号 “ ” 与 ‘ ’）
+  cleaned = cleaned.replace(/^["'“‘]|["'”’]$/g, '').trim()
 
   return cleaned
 }

@@ -2,7 +2,7 @@
 import { Dict, h, omit, Quester, Session, SessionError, trimSlash } from 'koishi'
 import { modelMap, orientMap, parseInput, sampler } from '../config'
 import { ImageData, NovelAI, StableDiffusionWebUI } from '../types'
-import { download, extractImages, getImageSize, forceDataPrefix, NetworkError, project, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage } from '../utils'
+import { download, extractImages, getImageSize, forceDataPrefix, NetworkError, project, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage, getVarietyPlusBase, computeVarietyPlusSigma } from '../utils'
 import AdmZip from 'adm-zip'
 import { resolve } from 'path'
 import { readFile } from 'fs/promises'
@@ -339,9 +339,6 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
           parameters.add_original_image = false
           parameters.legacy = false
           parameters.cfg_rescale = options.rescale ?? session.resolve(runtime.config.rescale)
-          if (options.skipCfgAboveSigma !== undefined) {
-            parameters.skip_cfg_above_sigma = options.skipCfgAboveSigma
-          }
 
 
           const isNAI3 = model === 'nai-diffusion-3'
@@ -368,7 +365,6 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
             parameters.reference_image_multiple = [] // unknown
             parameters.reference_information_extracted_multiple = [] // unknown
             parameters.reference_strength_multiple = [] // unknown
-            parameters.skip_cfg_above_sigma = options.skipCfgAboveSigma ?? null // unknown
             parameters.use_coords = false // unknown
             parameters.v4_prompt = {
               caption: {
@@ -614,6 +610,29 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
               // 数据已复制到 parameters，主动释放 options 上的大体积 base64
               delete options._maskBase64
               delete options._originalBase64
+            }
+          }
+
+          // ========== Variety+（skip_cfg_above_sigma）==========
+          // -v 为纯布尔开关：官网能力表内的模型按 base × 分辨率系数自动计算
+          // （与官网请求构造器逐位一致，见 utils.computeVarietyPlusSigma）；
+          // 关闭时发 null；官网无此开关的模型（v5 / v1 / naifu）忽略 -v。
+          // 必须放在此处：inpaint 对齐尺寸（parameters.width/height）与
+          // inpaintModel 都是刚定稿的，不能在此之前计算。
+          {
+            const varietyBase = getVarietyPlusBase(inpaintModel)
+            if (varietyBase !== undefined) {
+              parameters.skip_cfg_above_sigma = options.variety
+                ? computeVarietyPlusSigma(varietyBase, parameters.width, parameters.height)
+                : null
+            } else if (isNAI4) {
+              // v5：沿用历史行为恒发 null（服务端接受但无 Variety+ 语义）
+              parameters.skip_cfg_above_sigma = null
+            }
+            if (options.variety && varietyBase === undefined && runtime.config.debugLog) {
+              runtime.ctx.logger.info(`[Variety+] 模型 ${inpaintModel} 官网无 Variety+ 开关，-v 已忽略`)
+            } else if (options.variety && runtime.config.debugLog) {
+              runtime.ctx.logger.info(`[Variety+] ${inpaintModel} @ ${parameters.width}x${parameters.height} → skip_cfg_above_sigma=${parameters.skip_cfg_above_sigma}`)
             }
           }
 
