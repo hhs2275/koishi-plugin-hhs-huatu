@@ -270,6 +270,7 @@ export interface Config extends PromptConfig, ParamConfig {
   maxIterations?: number
   maxRetryCount?: number
   requestTimeout?: number
+  logTaskLifecycle?: boolean
   recallTimeout?: number
   maxConcurrency?: number
   pollInterval?: number
@@ -584,8 +585,9 @@ export const Config = Schema.intersect([
     ]).description('输出方式。').default('default'),
     showTokenSuccessPrefix: Schema.boolean().description('是否在成功消息与图片前附加 token[n] 文案。').default(false),
     maxIterations: Schema.natural().description('允许的最大绘制次数。').default(1),
-    maxRetryCount: Schema.natural().description('连接失败时最大的重试次数。').default(3),
-    requestTimeout: Schema.number().role('time').description('当请求超过这个时间时会中止并提示超时。').default(Time.minute),
+    maxRetryCount: Schema.natural().description('连接失败（请求未到达服务端）时的最大重试次数，重试带指数退避。请求超时与 429 等 HTTP 错误不会重试。').default(3),
+    requestTimeout: Schema.number().role('time').description('当请求超过这个时间时会中止并提示超时。为避免与仍在服务端运行的生成撞车，超时不会自动重试。').default(Time.minute),
+    logTaskLifecycle: Schema.boolean().description('记录每次生图任务的槽位派发/释放日志（每个任务 2 行，含 token 索引/耗时/结果），用于核对同一 token 的并发情况与排查 429。').default(false),
     recallTimeout: Schema.number().role('time').description('图片发送后自动撤回的时间 (设置为 0 以禁用此功能)。').default(0),
     maxConcurrency: Schema.number().description('单个频道下的最大并发数量 (设置为 0 以禁用此功能)。').default(0),
     debugLog: Schema.boolean().description('是否开启调试模式。开启后，将输出包含 Characters 功能、图片审核等功能的详细调试日志。').default(false),

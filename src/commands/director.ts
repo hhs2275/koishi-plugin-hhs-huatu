@@ -302,13 +302,14 @@ NovelAI Director Tools 图像处理工具
         // ===== 任务处理阶段（进入队列）=====
 
         // 创建任务处理函数
-        const executeDirectorTask = async () => {
-          // 借用一个 token 索引并写入 session.runtime 供 getToken() 使用
-          const borrowedIdx = queueSystem.borrowTokenIndex()
-            ; (session as any).runtime = {
-              ...(session as any).runtime,
-              _forcedTokenIndex: borrowedIdx,
-            }
+        // 槽位由外层 executeWhenReady 通过 queueSystem.acquireCustomSlot() 申请后传入；
+        // 这里绝不再自己 borrow 一次（borrowTokenIndex() 返回 null 时会被 login() 静默
+        // 退化成 token[0]，与正在该 token 上生成的请求撞车 → 同一 token 并发 → 429）。
+        const executeDirectorTask = async (borrowedIdx: number) => {
+          ; (session as any).runtime = {
+            ...(session as any).runtime,
+            _forcedTokenIndex: borrowedIdx,
+          }
           try {
             // 步骤 2: 获取 Token
             if (config.debugLog) {
@@ -496,12 +497,6 @@ NovelAI Director Tools 图像处理工具
             // 错误已经在外层 catch 中处理，这里重新抛出
             throw err
           }
-          finally {
-            // 归还借用的 token 索引
-            if (typeof borrowedIdx === 'number') {
-              queueSystem.returnTokenIndex(borrowedIdx)
-            }
-          }
         }
 
         // 添加到队列并执行
@@ -523,20 +518,32 @@ NovelAI Director Tools 图像处理工具
 
           // 使用 Promise 包装异步执行，遵守队列并发限制
           const executeWhenReady = async () => {
-            // 等待队列有空位
-            while (queueSystem.processingTasks >= queueSystem.maxConcurrentTasks) {
-              await new Promise(r => setTimeout(r, 100))
+            // 用队列 API 原子申请槽位：检查空位 / 占用 token / 计数都在同步段完成。
+            // 拿不到就等；等超时则明确失败并退款——绝不允许退化成 token[0]。
+            const borrowedIdx = await queueSystem.acquireCustomSlot()
+            if (borrowedIdx == null) {
+              queueSystem.userTasks[userId]--
+              if (config.membershipEnabled && config.pointsEnabled && deductedPoints > 0) {
+                membershipSystem.refundPoints(userId, deductedPoints)
+                  .catch(refundErr => ctx.logger.error(`[Director Tools] 排队超时返还点数异常: ${refundErr.message}`))
+              }
+              ctx.logger.warn(`[Director Tools] 等待空闲槽位超时，任务取消（user=${userId} tool=${toolType}）`)
+              await session.send(session.text('commands.novelai.messages.queue-busy'))
+              resolveTask(undefined)
+              return
             }
-
-            queueSystem.processingTasks++
 
             if (config.debugLog) {
-              ctx.logger.info(`[Director Tools] 开始执行任务: ${toolType}`)
+              ctx.logger.info(`[Director Tools] 开始执行任务: ${toolType} token[${borrowedIdx}]`)
             }
+
+            const slotStartedAt = Date.now()
+            let slotOk = false
 
             try {
               // 直接执行 Director Tools 任务
-              await executeDirectorTask()
+              await executeDirectorTask(borrowedIdx)
+              slotOk = true
 
               // 任务成功完成，减少用户计数
               queueSystem.userTasks[userId]--
@@ -582,9 +589,9 @@ NovelAI Director Tools 图像处理工具
               // 因为错误已经处理并发送给用户，避免 Koishi 命令系统再次处理导致重复发送
               resolveTask(undefined)
             } finally {
-              queueSystem.processingTasks--
-              // 处理队列中的下一个任务
-              queueSystem.processQueue()
+              // 归还槽位：释放 token + processingTasks-- + 触发队列继续派发
+              const slotResult = slotOk ? '成功' : '失败'
+              queueSystem.releaseCustomSlot(borrowedIdx, Date.now() - slotStartedAt, slotResult)
             }
           }
 

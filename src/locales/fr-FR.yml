@@ -50,6 +50,7 @@ commands:
     messages:
       queue-position: Actuellement {0} tâches dans la file d'attente, vous avez {1} tâches en cours de traitement
       queue-full: Limite de la file d'attente atteinte ({0}), veuillez réessayer plus tard
+      queue-busy: Toutes les places de génération sont occupées, veuillez réessayer plus tard
       exceed-user-queue: Votre limite de tâches ({0}) a été atteinte, temps de recharge actif
       penalty-cooldown: En raison du dépassement de la file d'attente, veuillez attendre {0} secondes
       redraw-queued: "{0} tâche(s) de redessin ajoutée(s) à la file d'attente (Total : {1} | Vos : {2})"

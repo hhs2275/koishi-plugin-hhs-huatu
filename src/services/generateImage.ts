@@ -22,6 +22,88 @@ export async function generateImage(runtime: Runtime, session: Session<'authorit
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** 读取队列分配给当前任务的 token 索引（没有则为 null）。 */
+function getForcedTokenIndex(session: Session<'authority'>): number | null {
+  const idx = (session as any)?.runtime?._forcedTokenIndex
+  return typeof idx === 'number' ? idx : null
+}
+
+/**
+ * 判断这个错误能不能安全重试。
+ *
+ * 背景（已实测确认）：订阅（Opus）账号在 NovelAI 侧有一把**每账号并发锁**，
+ * 第二个并发请求会拿到 `429 {"statusCode":429,"message":"Concurrent generation is locked"}`。
+ * 客户端主动放弃（超时/断开）并不会让服务端停止生成，那把锁会一直被占到这一张画完，
+ * 期间任何新请求都是这个 429。所以：**只要请求可能已经到达服务端，就绝不重试。**
+ *
+ * 允许重试的只有"请求根本没到达 NovelAI"的连接层失败（DNS/TCP/TLS）：
+ * plugin-http 会把它包成既没有 `response` 也没有 `code` 的 `fetch ... failed`。
+ * 再加一道时间闸门：发出后很快（< 3s）就失败的才算连接层失败；
+ * 如果请求发了很久才断，说明很可能已经到达服务端并正在生成，重试会撞锁。
+ *
+ * 明确不重试的两类：
+ * - `err.response` 存在：已经拿到 HTTP 响应（429/500/402…）。NovelAI 官方也要求 429 不要重试。
+ * - `err.code === 'ETIMEDOUT'`：requestTimeout 触发的中止——服务端几乎肯定还在生成。
+ */
+function isRetryableTransportError(err: any, costMs: number): boolean {
+  if (!Quester.Error.is(err)) return false
+  if (err.response) return false
+  if (err.code) return false
+  if (costMs > 3000) return false
+  return true
+}
+
+/** 生图失败的结构化日志：429 这类 HTTP 错误过去完全不落日志，线上只能靠猜。 */
+function logGenerateFailure(
+  runtime: Runtime,
+  session: Session<'authority'>,
+  options: any,
+  input: string,
+  err: any,
+  extra: { costMs: number; attempts: number; model?: string },
+) {
+  const idx = getForcedTokenIndex(session)
+  const status = err?.response?.status
+  const code = err?.code
+
+  // NovelAI 的关键信息在响应体里（例如 429 的 `Concurrent generation is locked`），
+  // 而 HTTPError 的 message 只是状态文本（Too Many Requests），所以要把 body 也截出来。
+  let bodyText = ''
+  const raw = err?.response?.data
+  try {
+    if (raw != null) {
+      bodyText = Buffer.isBuffer(raw)
+        ? raw.toString('utf8')
+        : typeof raw === 'string' ? raw : JSON.stringify(raw)
+      bodyText = bodyText.slice(0, 200).replace(/\s+/g, ' ')
+    }
+  } catch { /* 忽略 body 解析失败 */ }
+
+  // 供队列的槽位释放日志使用：让"结果"能显示成失败而不是成功
+  ; (session as any)._lastGenerateFailure = {
+    status: status ?? null,
+    code: code ?? null,
+    message: bodyText || err?.message,
+  }
+
+  runtime.ctx.logger.warn(
+    `[NovelAI] 生图失败 token[${idx ?? '-'}]`
+    + ` status=${status ?? '-'}`
+    + ` code=${code ?? '-'}`
+    + ` model=${extra.model || options?.model || runtime.config.model}`
+    + ` userId=${session.userId}`
+    + ` 重画=${(session as any)?.isRedraw ? '是' : '否'}`
+    + ` 尝试=${extra.attempts}`
+    + ` 耗时=${extra.costMs}ms`
+    + ` batch=${options?.batch || 1}`
+    + ` 提示长度=${(input || '').length}`
+    + ` | ${err?.message || err}`
+    + (bodyText ? ` | body=${bodyText}` : ''),
+  )
+}
+
 async function generateImageInner(runtime: Runtime, session: Session<'authority'>, options: any, input: string) {
     // 添加调试日志，检查session对象
     if (runtime.config.debugLog) runtime.ctx.logger.info(`generateImage开始处理，sessionId=${session.id}，userId=${session.userId}`)
@@ -871,17 +953,30 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
         return forceDataPrefix(res.data?.trimEnd().slice(27))
       }
 
+      // 重试策略：只有"请求未到达服务端"的连接失败才重试，且带指数退避 + 抖动。
+      // 请求超时与任何 HTTP 错误（429/500/…）一律不重试——详见 isRetryableTransportError 的注释。
       let dataUrl: string, count = 0
       while (true) {
+        const attemptStartedAt = Date.now()
         try {
           dataUrl = await request()
           break
         } catch (err) {
-          if (Quester.Error.is(err)) {
-            if (err.code && ++count < runtime.config.maxRetryCount) {
-              continue
-            }
+          const costMs = Date.now() - attemptStartedAt
+          if (isRetryableTransportError(err, costMs) && count < runtime.config.maxRetryCount) {
+            count++
+            const delay = Math.min(1000 * 2 ** (count - 1), 8000) + Math.floor(Math.random() * 250)
+            runtime.ctx.logger.warn(
+              `[NovelAI] 连接失败（请求未到达服务端）token[${getForcedTokenIndex(session) ?? '-'}]`
+              + ` 第 ${count}/${runtime.config.maxRetryCount} 次重试，${delay}ms 后重发：${err?.message || err}`,
+            )
+            await sleep(delay)
+            continue
           }
+
+          // 失败必须落日志：此前 429 只发给用户、不写日志，排查时完全看不到
+          logGenerateFailure(runtime, session, options, input, err, { costMs, attempts: count + 1, model })
+
           // 生成失败，退还点数（nai5 预占由外层 finally 释放）
           const deductedPoints = (options as any)?._deductedPoints || 0
           if (deductedPoints > 0 && runtime.config.pointsEnabled) {

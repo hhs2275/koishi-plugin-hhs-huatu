@@ -175,6 +175,67 @@ export class QueueSystem {
     this.releaseTokenIndex(index)
   }
 
+  /**
+   * 槽位生命周期日志（由 logTaskLifecycle 开关控制）。
+   * 每次派发/释放各打一行且成对出现，日志里可以直接核对
+   * "同一个 token 有没有同时跑过两个任务"，不用再靠推断。
+   */
+  private logSlot(action: '派发' | '释放', tokenIndex: number, extra: {
+    custom?: boolean
+    userId?: string
+    redraw?: boolean
+    queueLen?: number
+    elapsedMs?: number
+    result?: string
+  } = {}) {
+    if (!this.config.logTaskLifecycle) return
+    const parts = [
+      `[槽位] ${action} token[${tokenIndex}]`,
+      `在跑=${this.processingTasks}/${this.maxConcurrentTasks}`,
+      extra.custom ? '类型=director' : `类型=${extra.redraw ? '重画' : '生图'}`,
+    ]
+    if (extra.userId) parts.push(`user=${extra.userId}`)
+    if (typeof extra.queueLen === 'number') parts.push(`队列等待=${extra.queueLen}`)
+    if (typeof extra.elapsedMs === 'number') parts.push(`耗时=${extra.elapsedMs}ms`)
+    if (extra.result) parts.push(`结果=${extra.result}`)
+    this.ctx.logger.info(parts.join(' '))
+  }
+
+  /**
+   * 为"不走 generateImage 的定制任务"（如 Director Tools）原子地申请一个槽位。
+   *
+   * 检查有空位 → 占用 token → processingTasks++ 全在同步段里完成，
+   * 因此不会和 processQueue 的派发抢同一个槽位。
+   *
+   * 等待超时返回 null：调用方必须明确失败，**绝对不能**把 null 当索引写进
+   * session.runtime._forcedTokenIndex —— login() 在拿不到强制索引时会静默退化成
+   * token[0]，与正在该 token 上跑的生成撞车（同一 token 并发 → 429）。
+   */
+  async acquireCustomSlot(timeoutMs = 60000): Promise<number | null> {
+    const deadline = Date.now() + timeoutMs
+    while (true) {
+      if (this.processingTasks < this.maxConcurrentTasks) {
+        const index = this.acquireTokenIndex()
+        if (index != null) {
+          this.processingTasks++
+          this.logSlot('派发', index, { custom: true })
+          return index
+        }
+      }
+      if (Date.now() >= deadline) return null
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+
+  /** 归还 acquireCustomSlot 申请的槽位（务必放在 finally 里）。 */
+  releaseCustomSlot(index: number | null, elapsedMs?: number, result?: string): void {
+    if (typeof index !== 'number') return
+    this.releaseTokenIndex(index)
+    this.processingTasks--
+    this.logSlot('释放', index, { custom: true, elapsedMs, result })
+    this.processQueue()
+  }
+
   // 处理队列
   async processQueue() {
     if (this.taskQueue.length === 0) return
@@ -200,15 +261,37 @@ export class QueueSystem {
       taskSession.runtime = taskSession.runtime || {}
       taskSession.runtime._forcedTokenIndex = tokenIndex
 
+      const startedAt = Date.now()
+      this.logSlot('派发', tokenIndex, {
+        userId: task.session.userId,
+        redraw: !!task.isRedraw,
+        queueLen: this.taskQueue.length,
+      })
+
       Promise.resolve().then(async () => {
+        let result = '成功'
         try {
-          const result = await this.generateImageFn(task.session, task.options, task.input)
-          task.resolve(result)
+          const value = await this.generateImageFn(task.session, task.options, task.input)
+          task.resolve(value)
         } catch (err) {
+          result = `异常:${err?.message || err}`
           task.reject(err)
         } finally {
+          // generateImage 失败时是 catch 后正常 return 的（不抛异常），
+          // 所以还要看它留下的失败标记，否则"结果"会误显示成成功。
+          const failure = (task.session as any)?._lastGenerateFailure
+          if (failure) {
+            result = `失败(${failure.status != null ? `status=${failure.status}` : `code=${failure.code}`})`
+            delete (task.session as any)._lastGenerateFailure
+          }
           this.processingTasks--
           this.releaseTokenIndex(tokenIndex)
+          this.logSlot('释放', tokenIndex, {
+            userId: task.session.userId,
+            redraw: !!task.isRedraw,
+            elapsedMs: Date.now() - startedAt,
+            result,
+          })
           // 每完成一个任务，继续处理队列中的后续任务
           this.processQueue()
         }

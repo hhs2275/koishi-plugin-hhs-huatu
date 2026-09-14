@@ -50,6 +50,7 @@ commands:
     messages:
       queue-position: 当前队列中有 {0} 个任务，你有 {1} 个任务正在处理
       queue-full: 当前等待任务已达到上限({0})，请稍后再试
+      queue-busy: 当前绘图并发已满，请稍后再试
       exceed-user-queue: 你的任务数量已达到上限 ({0})，进入cd
       penalty-cooldown: 由于超出队列上限，需要等待 {0} 秒后才能继续使用
       redraw-queued: 已将 {0} 张重画任务加入队列 (总队列：{1} | 你的队列：{2})

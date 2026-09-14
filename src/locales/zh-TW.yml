@@ -48,6 +48,7 @@ commands:
     messages:
       queue-position: 目前佇列中有 {0} 個任務，你有 {1} 個任務正在處理
       queue-full: 目前等待任務已達到上限({0})，請稍後再試
+      queue-busy: 目前繪圖併發已滿，請稍後再試
       exceed-user-queue: 你的任務數量已達到上限 ({0})，進入CD
       penalty-cooldown: 由於超出佇列上限，需要等待 {0} 秒後才能繼續使用
       redraw-queued: 已將 {0} 張重畫任務加入佇列 (總佇列：{1} | 你的佇列：{2})

@@ -49,6 +49,7 @@ commands:
     messages:
       queue-position: Currently {0} tasks in queue, you have {1} tasks being processed
       queue-full: Queue limit reached ({0}), please try again later
+      queue-busy: All drawing slots are busy right now, please try again later
       exceed-user-queue: Your task limit ({0}) has been reached, cooldown active
       penalty-cooldown: Due to queue overflow, please wait {0} seconds before continuing
       redraw-queued: "Added {0} redraw task(s) to queue (Total: {1} | Yours: {2})"

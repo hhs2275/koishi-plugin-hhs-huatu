@@ -50,6 +50,7 @@ commands:
     messages:
       queue-position: Aktuell {0} Aufgaben in der Warteschlange, Sie haben {1} Aufgaben in Bearbeitung
       queue-full: Maximale Warteschlangenkapazität erreicht ({0}), bitte später erneut versuchen
+      queue-busy: Alle Zeichen-Slots sind derzeit belegt, bitte später erneut versuchen
       exceed-user-queue: Ihr Aufgabenlimit ({0}) wurde erreicht, Abklingzeit aktiv
       penalty-cooldown: Aufgrund der Warteschlangenüberlastung müssen Sie {0} Sekunden warten
       redraw-queued: "{0} Neuzeichnungs-Aufgabe(n) zur Warteschlange hinzugefügt (Gesamt: {1} | Ihre: {2})"
