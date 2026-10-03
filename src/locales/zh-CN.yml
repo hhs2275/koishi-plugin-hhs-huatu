@@ -20,6 +20,8 @@ commands:
         portrait: 竖图 (832x1216)
         square: 方图 (1024x1024)
         landscape: 横图 (1216x832)
+        窄竖图: 窄竖图 (640x1408)
+        窄横图: 窄横图 (1408x640)
       override: 禁用默认标签
       sampler: 设置采样器
       seed: 设置随机种子
