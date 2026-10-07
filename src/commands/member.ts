@@ -120,6 +120,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
 
       // 检查并重置每日使用次数
       membershipSystem.checkAndResetDailyUsage(targetId)
+      await membershipSystem.ensurePointsFresh(targetId)
 
       // 如果是刷新点数（按生效等级取刷新量）
       if (options.refreshPoints) {
@@ -274,9 +275,11 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           const points = user.points || 0
           pointsInfo = `\n点数余额：${points}`
           if (config.pointsMode === 'periodic') {
-            const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
-            if (remainDaysRefresh >= 0) {
-              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后（Lv${activeTier} 档刷新为 ${benefit.pointsRefresh} 点）`
+            const refreshAt = membershipSystem.getNextPointsRefreshAt(targetId)
+            const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh(targetId)
+            if (refreshAt > 0) {
+              const refreshDate = new Date(refreshAt).toLocaleString()
+              pointsInfo += `\n下次点数刷新时间：${refreshDate}（约${remainDaysRefresh}天后，Lv${activeTier} 档刷新为 ${benefit.pointsRefresh} 点）`
             }
           }
         }
@@ -289,9 +292,10 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
         if (config.pointsEnabled) {
           pointsInfo = `\n点数余额：${user.points || 0}`
           if (config.pointsMode === 'periodic' && config.pointsRefreshIncludeNonMember) {
-            const remainDaysRefresh = membershipSystem.getDaysUntilNextRefresh()
-            if (remainDaysRefresh >= 0) {
-              pointsInfo += `\n下次点数刷新时间：${remainDaysRefresh}天后`
+            const refreshAt = membershipSystem.getNextPointsRefreshAt(targetId)
+            if (refreshAt > 0) {
+              const refreshDate = new Date(refreshAt).toLocaleString()
+              pointsInfo += `\n下次点数刷新时间：${refreshDate}（约${membershipSystem.getDaysUntilNextRefresh(targetId)}天后）`
             }
           }
         }
@@ -318,7 +322,7 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
       .option('resetUsage', '-u <userId:string> 重置指定用户的使用次数')
       .option('addDaysAll', '-a <days:number> 给会员增加天数（配合 -t 仅操作指定等级）')
       .option('tier', '-t <tier:number> 指定生效等级（Lv1-Lv5），缺省对所有会员操作')
-      .option('refreshPoints', '-f 立即执行点数刷新（配合 -t 仅刷新指定等级）')
+      .option('refreshPoints', '-f 立即手动刷新点数（不改变自动刷新计划，配合 -t 仅刷新指定等级）')
       .option('addPoints', '--add-points <amount:number> 给会员加点数（配合 -t 仅操作指定等级）')
       .option('subPoints', '--sub-points <amount:number> 给会员减点数（配合 -t 仅操作指定等级）')
       .option('setPoints', '--set-points <value:string> 设置指定用户点数，格式: 用户ID:点数')
@@ -502,10 +506,11 @@ export function registerMember(ctx: Context, config: Config, runtime: Runtime) {
           if (config.pointsEnabled) {
             statusMsg += `\n【点数系统】\n`
             statusMsg += `✅ 点数控制：已启用\n`
-            statusMsg += `   点数模式：${config.pointsMode === 'periodic' ? '按周期刷新' : '永久点数'}\n`
+            statusMsg += `   点数模式：${config.pointsMode === 'periodic' ? '按周期惰性刷新' : '永久点数'}\n`
             if (config.pointsMode === 'periodic') {
               statusMsg += `   刷新周期：${config.pointsRefreshCycleDays || 30} 天\n`
               statusMsg += `   刷新点数：${config.pointsRefreshAmount || 200}\n`
+              statusMsg += `   刷新触发：用户发生点数相关操作时按用户惰性执行\n`
               statusMsg += `   刷新范围：${config.pointsRefreshIncludeNonMember ? '所有用户' : '仅会员'}\n`
             }
             statusMsg += `   默认点数：${config.pointsDefault || 200}\n`

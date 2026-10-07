@@ -126,6 +126,8 @@ export interface UserData {
   dailyLimit: number // 每日使用上限
   lastDrawTime?: number // 时间戳，上次绘图时间，用于计算CD
   points?: number // 当前点数
+  pointsRefreshAt?: number // 下一次自动点数刷新时间
+  pointsLastRefreshedAt?: number // 最近一次自动点数刷新实际执行时间
   nai5DailyUsage?: number // 当日 nai5 / nai5c 使用次数（周桶模式下仅作统计）
   nai5Bucket?: number // nai5 周桶余额（张），nai5WeeklyBucketEnabled 开启时使用
   nai5BucketDay?: number // 周桶上次入账日（本地 0 点时间戳，0 = 未初始化/待种子）
@@ -144,6 +146,8 @@ export interface HhsHuatuUser {
   dailyLimit: number
   lastDrawTime: number
   points: number
+  pointsRefreshAt: number
+  pointsLastRefreshedAt: number
   nai5DailyUsage: number
   nai5Bucket: number
   nai5BucketDay: number

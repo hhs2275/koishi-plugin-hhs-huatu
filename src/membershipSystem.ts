@@ -18,10 +18,10 @@ export class MembershipSystem {
   // 定时任务取消函数
   private cleanupTimerDispose: (() => void) | null = null
   private reminderTimerDispose: (() => void) | null = null
-  private pointsRefreshTimerDispose: (() => void) | null = null
 
-  // 上次点数刷新时间（从数据库元数据读取或首次设置）
-  private lastPointsRefreshTime: number = 0
+  // 上一版本的全局刷新时间，仅用于迁移旧数据
+  private legacyPointsRefreshTime: number = 0
+  private pointsRefreshLocks = new Map<string, Promise<void>>()
 
   constructor(
     private ctx: Context,
@@ -39,17 +39,15 @@ export class MembershipSystem {
     // 初始化定时任务
     this.setupCleanupTask()
     this.setupReminderTask()
-    this.setupPointsRefreshTask()
 
     // 监听配置变化
-    ctx.accept(['membershipEnabled', 'memberCleanupEnabled', 'memberCleanupTime', 'memberExpiryReminderEnabled', 'memberReminderTime', 'memberReminderHours', 'pointsEnabled', 'pointsMode', 'pointsRefreshCycleDays'], () => {
+    ctx.accept(['membershipEnabled', 'memberCleanupEnabled', 'memberCleanupTime', 'memberExpiryReminderEnabled', 'memberReminderTime', 'memberReminderHours'], () => {
       ctx.logger.info('会员系统配置已更新，重新安排定时任务')
       if (this.config.membershipEnabled && Object.keys(this.userData).length === 0) {
         this.loadUserDataFromDB().catch(err => this.ctx.logger.error('动态加载用户数据失败', err))
       }
       this.setupCleanupTask()
       this.setupReminderTask()
-      this.setupPointsRefreshTask()
     })
   }
 
@@ -81,6 +79,8 @@ export class MembershipSystem {
       dailyLimit: 'unsigned',
       lastDrawTime: 'unsigned',
       points: 'integer',
+      pointsRefreshAt: 'unsigned',
+      pointsLastRefreshedAt: 'unsigned',
       nai5DailyUsage: 'unsigned',
       nai5Bucket: 'unsigned',
       nai5BucketDay: 'unsigned',
@@ -116,7 +116,7 @@ export class MembershipSystem {
       let loadedCount = 0;
       for (const row of rows) {
         if (row.visitorId === '_system_points_refresh') {
-          this.lastPointsRefreshTime = row.lastUsed || 0;
+          this.legacyPointsRefreshTime = row.lastUsed || 0;
           continue;
         }
         loadedCount++;
@@ -128,6 +128,8 @@ export class MembershipSystem {
           dailyLimit: row.dailyLimit,
           lastDrawTime: row.lastDrawTime,
           points: row.points,
+          pointsRefreshAt: row.pointsRefreshAt || 0,
+          pointsLastRefreshedAt: row.pointsLastRefreshedAt || 0,
           nai5DailyUsage: row.nai5DailyUsage || 0,
           nai5Bucket: row.nai5Bucket || 0,
           nai5BucketDay: row.nai5BucketDay || 0,
@@ -140,6 +142,7 @@ export class MembershipSystem {
       await this.loadCardsFromDB()
       // 存量会员迁移：isMember=true 但没有任何会员卡的用户 → 生成 Lv1 卡
       await this.migrateLegacyMembers()
+      await this.migratePointsRefreshPlans()
     } catch (err) {
       this.ctx.logger.error('从数据库加载会员系统数据失败', err)
     }
@@ -191,7 +194,26 @@ export class MembershipSystem {
     }
   }
 
-  // 将指定用户的所有卡同步到数据库（先删后建，卡数量小，简单可靠）
+  /**
+   * 将旧版全局刷新时间迁移为用户级刷新计划。
+   * 迁移只补字段，不改变当前点数、会员卡或使用记录。
+   */
+  private async migratePointsRefreshPlans() {
+    if (!this.legacyPointsRefreshTime || this.config.pointsMode !== 'periodic') return
+
+    const cycleMs = (this.config.pointsRefreshCycleDays || 30) * 24 * 60 * 60 * 1000
+    let changed = false
+    for (const userId in this.userData) {
+      const user = this.userData[userId]
+      const tier = this.computeActiveTier(user.cards || [])
+      const isInScope = tier > 0 || this.config.pointsRefreshIncludeNonMember
+      if (!isInScope || user.pointsRefreshAt) continue
+      user.pointsRefreshAt = this.legacyPointsRefreshTime + cycleMs
+      changed = true
+    }
+    if (changed) await this.saveUserData()
+  }
+
   private async syncCardsToDB(userId: string) {
     try {
       const user = this.userData[userId]
@@ -233,23 +255,9 @@ export class MembershipSystem {
     }
   }
 
-  // 保存点数刷新时间记录
+  /** 旧版全局刷新记录仅保留用于读取迁移，不再写入。 */
   async saveLastPointsRefreshTime() {
-    try {
-      await this.ctx.database.upsert('hhs_huatu_user', [{
-        visitorId: '_system_points_refresh',
-        isMember: false,
-        membershipExpiry: 0,
-        dailyUsage: 0,
-        lastUsed: this.lastPointsRefreshTime,
-        dailyLimit: 0,
-        lastDrawTime: 0,
-        points: 0,
-        nai5DailyUsage: 0,
-      }], ['visitorId'])
-    } catch (err) {
-      this.ctx.logger.error('保存点数刷新时间失败', err)
-    }
+    return
   }
 
   // 将单个用户数据同步到数据库
@@ -266,6 +274,8 @@ export class MembershipSystem {
         dailyLimit: user.dailyLimit,
         lastDrawTime: user.lastDrawTime || 0,
         points: user.points || 0,
+        pointsRefreshAt: user.pointsRefreshAt || 0,
+        pointsLastRefreshedAt: user.pointsLastRefreshedAt || 0,
         nai5DailyUsage: user.nai5DailyUsage || 0,
         nai5Bucket: user.nai5Bucket || 0,
         nai5BucketDay: user.nai5BucketDay || 0,
@@ -292,6 +302,8 @@ export class MembershipSystem {
           dailyLimit: user.dailyLimit,
           lastDrawTime: user.lastDrawTime || 0,
           points: user.points || 0,
+          pointsRefreshAt: user.pointsRefreshAt || 0,
+          pointsLastRefreshedAt: user.pointsLastRefreshedAt || 0,
           nai5DailyUsage: user.nai5DailyUsage || 0,
           nai5Bucket: user.nai5Bucket || 0,
           nai5BucketDay: user.nai5BucketDay || 0,
@@ -492,6 +504,7 @@ export class MembershipSystem {
         if (this.config.pointsMode === 'periodic') {
           const refreshAmount = this.getTierBenefit(safeTier).pointsRefresh
           user.points = refreshAmount
+          user.pointsRefreshAt = now + (this.config.pointsRefreshCycleDays || 30) * 24 * 60 * 60 * 1000
           this.ctx.logger.info(`[会员系统] 用户 ${userId} 首次成为 Lv${safeTier} 会员，点数已初始化为 ${refreshAmount}`)
         } else if (!user.points) {
           user.points = this.config.pointsDefault || 200
@@ -657,6 +670,7 @@ export class MembershipSystem {
     if (!this.config.pointsEnabled || amount <= 0) return 0
 
     this.ensureUserData(userId)
+    await this.ensurePointsFresh(userId)
     const user = this.userData[userId]
     const currentPoints = user.points || 0
 
@@ -676,6 +690,7 @@ export class MembershipSystem {
     if (!this.config.pointsEnabled || amount <= 0) return
 
     this.ensureUserData(userId)
+    await this.ensurePointsFresh(userId)
     const user = this.userData[userId]
     user.points = (user.points || 0) + amount
     await this.syncUserToDB(userId)
@@ -702,6 +717,7 @@ export class MembershipSystem {
     const now = Date.now()
 
     for (const userId in this.userData) {
+      await this.ensurePointsFresh(userId)
       const user = this.userData[userId]
 
       if (membersOnly && (!user.isMember || user.membershipExpiry < now)) {
@@ -730,70 +746,81 @@ export class MembershipSystem {
     return { count: updatedCount, message }
   }
 
-  /**
-   * 刷新点数（定期任务 / 手动触发）。
-   * 等级制度下按刷新时刻的生效等级取刷新量：Lv1 = pointsRefreshAmount，Lv2-Lv5 = 各档 pointsRefresh；
-   * 非会员若在刷新范围内，刷为 Lv1 档值（与现有行为一致）。
-   * @param tierFilter 指定生效等级时仅刷新该等级会员；缺省刷新全部范围
-   */
+  /** 确保用户在读取或扣除点数前完成到期的惰性刷新。 */
+  async ensurePointsFresh(userId: string): Promise<void> {
+    if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') return
+    this.ensureUserData(userId)
+    const running = this.pointsRefreshLocks.get(userId)
+    if (running) return running
+
+    const task = this.refreshUserPointsIfDue(userId).finally(() => {
+      if (this.pointsRefreshLocks.get(userId) === task) this.pointsRefreshLocks.delete(userId)
+    })
+    this.pointsRefreshLocks.set(userId, task)
+    return task
+  }
+
+  private async refreshUserPointsIfDue(userId: string): Promise<void> {
+    const user = this.userData[userId]
+    const now = Date.now()
+    const cycleMs = (this.config.pointsRefreshCycleDays || 30) * 24 * 60 * 60 * 1000
+    const tier = this.getActiveTier(userId)
+    const inScope = tier > 0 || this.config.pointsRefreshIncludeNonMember
+
+    if (!user.pointsRefreshAt) {
+      if (!inScope) return
+      user.pointsRefreshAt = now + cycleMs
+      await this.syncUserToDB(userId)
+      return
+    }
+    if (user.pointsRefreshAt > now || !inScope) return
+
+    const plannedAt = user.pointsRefreshAt
+    user.points = this.getTierBenefit(tier > 0 ? tier : 1).pointsRefresh
+    user.pointsLastRefreshedAt = now
+    do {
+      user.pointsRefreshAt += cycleMs
+    } while (user.pointsRefreshAt <= now)
+    await this.syncUserToDB(userId)
+    this.ctx.logger.info(`[会员系统] 用户 ${userId} 惰性刷新点数：${plannedAt} → ${user.pointsRefreshAt}`)
+  }
+
+  /** 手动刷新点数，不改变用户自动刷新计划。 */
   async refreshPoints(tierFilter?: number): Promise<{ count: number; message: string }> {
     if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') {
       return { count: 0, message: '点数刷新未启用或不是周期模式' }
     }
 
     let refreshedCount = 0
-    const now = Date.now()
-
     for (const userId in this.userData) {
-      const user = this.userData[userId]
-
-      let tier = this.computeActiveTier(user.cards || [])
-      if (tier > 1 && this.config.tierEnabled === false) tier = 1
-      const isActive = tier > 0
-
-      // 检查是否在刷新范围内
-      if (!this.config.pointsRefreshIncludeNonMember && !isActive) {
-        continue
-      }
-
-      // 按生效等级过滤
+      const tier = this.getActiveTier(userId)
+      if (tier <= 0 && !this.config.pointsRefreshIncludeNonMember) continue
       if (tierFilter !== undefined && tier !== tierFilter) continue
-
-      // 按生效等级取刷新量；非会员（范围包含时）刷为 Lv1 档值
+      await this.ensurePointsFresh(userId)
+      const user = this.userData[userId]
       user.points = this.getTierBenefit(tier > 0 ? tier : 1).pointsRefresh
+      await this.syncUserToDB(userId)
       refreshedCount++
-    }
-
-    this.lastPointsRefreshTime = now
-    await this.saveLastPointsRefreshTime()
-
-    if (refreshedCount > 0) {
-      await this.saveUserData()
     }
 
     const scope = tierFilter !== undefined ? `Lv${tierFilter} 会员` : '用户'
     const message = refreshedCount > 0
-      ? `✅ 点数刷新完成，共刷新 ${refreshedCount} 位${scope}的点数（按各自生效等级）`
+      ? `✅ 已手动刷新 ${refreshedCount} 位${scope}的点数，自动刷新计划未改变`
       : '⚠️ 没有符合条件的用户需要刷新点数'
-
     this.ctx.logger.info(message)
     return { count: refreshedCount, message }
   }
 
-  /**
-   * 获取距离下次点数刷新的天数
-   */
-  getDaysUntilNextRefresh(): number {
+  getNextPointsRefreshAt(userId: string): number {
     if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') return -1
+    return this.userData[userId]?.pointsRefreshAt || 0
+  }
 
-    const cycleDays = this.config.pointsRefreshCycleDays || 30
-    const cycleMs = cycleDays * 24 * 60 * 60 * 1000
-    const now = Date.now()
-
-    if (this.lastPointsRefreshTime === 0) return 0
-
-    const remainDays = Math.ceil((this.lastPointsRefreshTime + cycleMs - now) / (24 * 60 * 60 * 1000))
-    return remainDays > 0 ? remainDays : 0
+  getDaysUntilNextRefresh(userId?: string): number {
+    if (!this.config.pointsEnabled || this.config.pointsMode !== 'periodic') return -1
+    const at = userId ? this.getNextPointsRefreshAt(userId) : 0
+    if (!at) return 0
+    return Math.max(0, Math.ceil((at - Date.now()) / (24 * 60 * 60 * 1000)))
   }
 
   /**
@@ -1095,46 +1122,7 @@ export class MembershipSystem {
     }
   }
 
-  // 设置点数刷新定时任务（每天检查一次是否需要刷新）
-  private setupPointsRefreshTask() {
-    if (this.pointsRefreshTimerDispose) {
-      this.pointsRefreshTimerDispose()
-      this.pointsRefreshTimerDispose = null
-    }
-
-    if (this.config.membershipEnabled && this.config.pointsEnabled && this.config.pointsMode === 'periodic') {
-      const cycleDays = this.config.pointsRefreshCycleDays || 30
-      const cycleMs = cycleDays * 24 * 60 * 60 * 1000
-      const ONE_DAY = 24 * 60 * 60 * 1000
-
-      // 每天凌晨 00:05 检查一次是否需要刷新
-      const scheduleDailyCheck = () => {
-        const delay = this.getDelayUntilTime('00:05')
-
-        this.ctx.logger.info(`点数刷新检查任务已安排，将在 ${new Date(Date.now() + delay).toLocaleString()} 检查（刷新周期: ${cycleDays} 天）`)
-
-        this.pointsRefreshTimerDispose = this.ctx.setTimeout(async () => {
-          const now = Date.now()
-          const shouldRefresh = this.lastPointsRefreshTime === 0 || (now - this.lastPointsRefreshTime >= cycleMs)
-
-          if (shouldRefresh) {
-            this.ctx.logger.info(`已达到刷新周期 (${cycleDays} 天)，正在执行点数刷新...`)
-            await this.refreshPoints()
-          } else {
-            const remainDays = Math.ceil((this.lastPointsRefreshTime + cycleMs - now) / ONE_DAY)
-            if (this.config.debugLog) {
-              this.ctx.logger.info(`点数刷新检查：距离下次刷新还有 ${remainDays} 天`)
-            }
-          }
-
-          // 重新安排明天的检查
-          scheduleDailyCheck()
-        }, delay)
-      }
-
-      scheduleDailyCheck()
-    }
-  }
+  // 点数刷新采用按用户惰性执行，不注册全局定时任务。
 
   // 给所有有效会员卡增加天数（按卡粒度，每张有效卡独立延长）。
   // @param tierFilter 指定生效等级时仅操作该等级会员；缺省操作全部会员
@@ -1188,6 +1176,8 @@ export class MembershipSystem {
         lastUsed: Date.now(),
         dailyLimit: this.config.nonMemberDailyLimit,
         points: 0,
+        pointsRefreshAt: 0,
+        pointsLastRefreshedAt: 0,
         nai5DailyUsage: 0,
         nai5Bucket: 0,
         nai5BucketDay: 0,
