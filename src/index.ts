@@ -30,6 +30,7 @@ export const usage = `
 | \`nai4-5\` | \`nai-diffusion-4-5-full\` | V4.5 全量模型 |
 | \`nai4-5c\` | \`nai-diffusion-4-5-curated\` | V4.5 精选模型 |
 | \`nai5\` | \`nai-diffusion-5-full\` | V5 全量模型 |
+| \`nai5m\` | \`nai-diffusion-5-full-medium\` | V5 Medium（Effort=Medium，固定 14 步，每次扣 0.6 次 nai5 额度） |
 | \`nai5c\` | \`nai-diffusion-5-curated\` | V5 精选模型 |
 
 ### 🛠️ 功能列表

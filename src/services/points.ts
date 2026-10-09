@@ -92,7 +92,7 @@ export function calculateTaskPointsCost(
     return { total: unitFree * count, perImage }
   }
 
-  const overageCount = runtime.membershipSystem.getNai5OverageCount(uid, count)
+  const overageCount = runtime.membershipSystem.getNai5OverageCount(uid, count, resolvedModel)
   const freeCount = count - overageCount
   const unitOverage = overageCount > 0
     ? getUnitPointsCost(runtime, session, options, width, height, isImg2Img, preciseRefCount, true, resolvedModel)

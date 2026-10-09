@@ -116,6 +116,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .alias('nai4-5', { options: { model: 'nai-v4-5-full' } })
     .alias('nai5c', { options: { model: 'nai-v5-curated'} })
     .alias('nai5', { options: { model: 'nai-v5-full' } })
+    .alias('nai5m', { options: { model: 'nai-v5-full-medium' } })
     .userFields(['authority'])
     .shortcut('imagine', { i18n: true, fuzzy: true })
     .shortcut('enhance', { i18n: true, fuzzy: true, options: { enhance: true } })
@@ -282,17 +283,32 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
         const preciseRefCount = (options as any)?._preciseRefImages?.length || 0
         const drawCount = getTaskDrawCount(options)
         const isImg2Img = !!options.inpaint || imgUrl_check
+        const resolvedModel = options.model || config.model
+
+        // Medium 档固定 14 步（官网行为），计费与请求保持一致；忽略用户传入的 -t
+        if (membershipSystem.isNai5MediumModel(resolvedModel)) {
+          options.steps = 14
+        }
 
         // nai5 日限内走 Opus 免费档；超出后按 Anlas 估算扣点（标准分辨率也会扣）
         const cost = calculateTaskPointsCost(
           runtime, session, options, resWidth, resHeight, isImg2Img, preciseRefCount,
-          userId, options.model || config.model, drawCount,
+          userId, resolvedModel, drawCount,
         )
         pointsCost = cost.total
-        nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, options.model || config.model, drawCount)
-        if (membershipSystem.isNai5Model(options.model || config.model) && membershipSystem.getNai5DailyLimit(userId) > 0) {
-          membershipSystem.reserveNai5Usage(userId, drawCount)
-          ; (options as any)._reservedNai5 = drawCount
+        const nai5OverageCount = membershipSystem.isNai5Model(resolvedModel)
+          ? membershipSystem.getNai5OverageCount(userId, drawCount, resolvedModel)
+          : 0
+        nai5Overage = nai5OverageCount > 0
+        if (membershipSystem.isNai5Model(resolvedModel) && membershipSystem.getNai5DailyLimit(userId) > 0) {
+          // Medium 每次画图只消耗 0.6 次免费额度，按权重预占
+          const weight = membershipSystem.getNai5UsageWeight(resolvedModel)
+          const reserveCount = Math.round(weight * drawCount * 10) / 10
+          membershipSystem.reserveNai5Usage(userId, reserveCount)
+          ; (options as any)._reservedNai5 = reserveCount
+          // 点数支付的（超出免费额度）张数不扣免费额度：出图后只按免费张数结算，
+          // 否则余额剩 0.x 时付了点数还会把残余额度抹掉
+          ; (options as any)._nai5FreeCount = drawCount - nai5OverageCount
         }
 
         if (pointsCost > 0) {

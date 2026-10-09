@@ -80,6 +80,7 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
         // ===== 重画点数预扣（按当前 nai5 日限逐张重算，不能复用上次免费单价） =====
         let redrawDeductedPoints = 0
         let redrawPerTask: number[] = []
+        let redrawFreePerTask: number[] = []
         let nai5Overage = false
         if (config.membershipEnabled && config.pointsEnabled) {
           let resWidth = 832, resHeight = 1216
@@ -111,18 +112,31 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
             userId, lastOptions.model || config.model, drawCount,
           )
           const imagesPerTask = Math.max(1, Math.floor(drawCount / repeatCount))
+          const redrawModel = lastOptions.model || config.model
+          const nai5OverageCount = membershipSystem.isNai5Model(redrawModel)
+            ? membershipSystem.getNai5OverageCount(userId, drawCount, redrawModel)
+            : 0
+          // 免费张数（点数支付的部分不扣免费额度），按任务切分
+          const nai5FreeTotal = drawCount - nai5OverageCount
+          redrawFreePerTask.length = 0
           for (let i = 0; i < repeatCount; i++) {
             const start = i * imagesPerTask
-            redrawPerTask.push(cost.perImage.slice(start, start + imagesPerTask).reduce((sum, n) => sum + n, 0))
+            const end = Math.min(drawCount, start + imagesPerTask)
+            redrawPerTask.push(cost.perImage.slice(start, end).reduce((sum, n) => sum + n, 0))
+            redrawFreePerTask.push(Math.max(0, Math.min(end, nai5FreeTotal) - start))
           }
-          nai5Overage = membershipSystem.shouldChargeNai5Overage(userId, lastOptions.model || config.model, drawCount)
-          if (membershipSystem.isNai5Model(lastOptions.model || config.model) && membershipSystem.getNai5DailyLimit(userId) > 0) {
-            membershipSystem.reserveNai5Usage(userId, drawCount)
+          nai5Overage = nai5OverageCount > 0
+          let nai5ReserveCount = drawCount
+          if (membershipSystem.isNai5Model(redrawModel) && membershipSystem.getNai5DailyLimit(userId) > 0) {
+            // Medium 每次画图只消耗 0.6 次免费额度，按权重预占
+            const weight = membershipSystem.getNai5UsageWeight(redrawModel)
+            nai5ReserveCount = Math.round(weight * drawCount * 10) / 10
+            membershipSystem.reserveNai5Usage(userId, nai5ReserveCount)
           }
           if (cost.total > 0) {
             const result = await membershipSystem.deductPoints(userId, cost.total)
             if (result === -1) {
-              membershipSystem.releaseNai5Usage(userId, drawCount)
+              membershipSystem.releaseNai5Usage(userId, nai5ReserveCount)
               const currentPoints = membershipSystem.getPoints(userId)
               queueSystem.releaseRedrawLock()
               return session.text('commands.novelai.messages.points-insufficient', [currentPoints, cost.total])
@@ -242,7 +256,10 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
               if (unitCost > 0) taskOptions._deductedPoints = unitCost
             }
             if (config.membershipEnabled && membershipSystem.isNai5Model(lastTask.options?.model || config.model) && membershipSystem.getNai5DailyLimit(currentUserId) > 0) {
-              taskOptions._reservedNai5 = getTaskDrawCount(lastTask.options, 1)
+              const weight = membershipSystem.getNai5UsageWeight(lastTask.options?.model || config.model)
+              const perTaskCount = getTaskDrawCount(lastTask.options, 1)
+              taskOptions._reservedNai5 = Math.round(weight * perTaskCount * 10) / 10
+              taskOptions._nai5FreeCount = redrawFreePerTask[index] ?? perTaskCount
             }
 
             queueSystem.taskQueue.push({

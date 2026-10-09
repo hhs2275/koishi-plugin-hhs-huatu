@@ -405,6 +405,7 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
 
           // 设置基础参数
           const isNAI5 = model === 'nai-diffusion-5-curated' || model === 'nai-diffusion-5-full'
+            || model === 'nai-diffusion-5-full-medium'
           parameters.params_version = isNAI5 ? 4 : 3 // V5 使用新版参数协议
           parameters.sampler = sampler.sd2nai(options.sampler, model)
 
@@ -421,6 +422,15 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
           parameters.add_original_image = false
           parameters.legacy = false
           parameters.cfg_rescale = options.rescale ?? session.resolve(runtime.config.rescale)
+
+          // Medium 档（Effort=Medium）官网固定参数：14 步、k_euler_ancestral、
+          // 关闭 cfg_rescale、ucPreset=2（heavy）。计费侧已同步按 14 步计算。
+          if (model === 'nai-diffusion-5-full-medium') {
+            parameters.steps = 14
+            parameters.sampler = 'k_euler_ancestral'
+            parameters.cfg_rescale = 0
+            parameters.ucPreset = 2
+          }
 
 
           const isNAI3 = model === 'nai-diffusion-3'
@@ -1017,10 +1027,19 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
 
             // 审核不通过也扣减使用次数
             if (runtime.config.membershipEnabled) {
+              const model = options.model || runtime.config.model
               const nai5Count = options.batch || 1
-              runtime.membershipSystem.incrementUsage(session.userId, 1, options.model || runtime.config.model, nai5Count)
+              // 只有免费额度内的张数扣 nai5 额度；点数支付的部分不扣
+              const freeQuota = (options as any)._nai5FreeCount
+              const freeCount = typeof freeQuota === 'number' ? Math.min(freeQuota, nai5Count) : nai5Count
+              runtime.membershipSystem.incrementUsage(session.userId, 1, model, freeCount)
               if ((options as any)._reservedNai5) {
-                ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - nai5Count)
+                // Medium 每张按 0.6 权重消耗预占额度
+                const weight = runtime.membershipSystem.getNai5UsageWeight(model)
+                ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - Math.round(freeCount * weight * 10) / 10)
+              }
+              if (typeof freeQuota === 'number') {
+                ; (options as any)._nai5FreeCount = Math.max(0, freeQuota - freeCount)
               }
             }
 
@@ -1102,10 +1121,19 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
 
       // 图片发送成功后，增加使用次数
       if (runtime.config.membershipEnabled) {
+        const model = options.model || runtime.config.model
         const nai5Count = options.batch || 1
-        runtime.membershipSystem.incrementUsage(session.userId, 1, options.model || runtime.config.model, nai5Count)
+        // 只有免费额度内的张数扣 nai5 额度；点数支付的部分不扣（保住 0.x 残余额度）
+        const freeQuota = (options as any)._nai5FreeCount
+        const freeCount = typeof freeQuota === 'number' ? Math.min(freeQuota, nai5Count) : nai5Count
+        runtime.membershipSystem.incrementUsage(session.userId, 1, model, freeCount)
         if ((options as any)._reservedNai5) {
-          ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - nai5Count)
+          // Medium 每张按 0.6 权重消耗预占额度
+          const weight = runtime.membershipSystem.getNai5UsageWeight(model)
+          ; (options as any)._reservedNai5 = Math.max(0, (options as any)._reservedNai5 - Math.round(freeCount * weight * 10) / 10)
+        }
+        if (typeof freeQuota === 'number') {
+          ; (options as any)._nai5FreeCount = Math.max(0, freeQuota - freeCount)
         }
       }
 

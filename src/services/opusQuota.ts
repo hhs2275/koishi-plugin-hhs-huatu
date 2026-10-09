@@ -23,9 +23,14 @@ export async function fetchSubscription(ctx: Context, config: Config, token: str
   }) as Promise<Subscription>
 }
 
-/** NovelAI V5 的两个免费额度模型。 */
+/** NovelAI Diffusion V5 Medium（Effort=Medium，官网独立模型 ID）。 */
+export function isNovelAIV5MediumModel(model: string): boolean {
+  return model === 'nai-diffusion-5-full-medium'
+}
+
+/** NovelAI V5 的免费额度模型（含 Medium）。 */
 export function isNovelAIV5Model(model: string): boolean {
-  return model === 'nai-diffusion-5-curated' || model === 'nai-diffusion-5-full'
+  return model === 'nai-diffusion-5-curated' || model === 'nai-diffusion-5-full' || isNovelAIV5MediumModel(model)
 }
 
 /** 判断订阅响应中的 Opus 免费额度是否已经不可用。 */

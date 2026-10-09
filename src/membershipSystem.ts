@@ -3,7 +3,7 @@ import { Config, modelMap } from './config'
 import { UserData, MembershipCard, TierBenefit, HhsHuatuUser } from './types'
 import { resolve } from 'path'
 import { readFile } from 'fs/promises'
-import { isNovelAIV5Model } from './services/opusQuota'
+import { isNovelAIV5Model, isNovelAIV5MediumModel } from './services/opusQuota'
 
 /** 会员等级上下限 */
 export const MIN_TIER = 1
@@ -81,8 +81,9 @@ export class MembershipSystem {
       points: 'integer',
       pointsRefreshAt: 'unsigned',
       pointsLastRefreshedAt: 'unsigned',
-      nai5DailyUsage: 'unsigned',
-      nai5Bucket: 'unsigned',
+      // nai5DailyUsage / nai5Bucket：nai5m（Medium）按 0.6 权重扣减，会出现小数，用 float
+      nai5DailyUsage: 'float',
+      nai5Bucket: 'float',
       nai5BucketDay: 'unsigned',
       nai5DepositTier: 'unsigned',
     }, {
@@ -1242,14 +1243,15 @@ export class MembershipSystem {
       const bucketDay = user.nai5BucketDay || 0
       if (!bucketDay) {
         const seedLimit = activeTier > 0 ? this.getTierBenefit(activeTier).nai5DailyLimit : 0
-        user.nai5Bucket = seedLimit > 0 ? Math.max(0, seedLimit - (user.nai5DailyUsage || 0)) : 0
+        const seed = Math.max(0, seedLimit - (user.nai5DailyUsage || 0))
+        user.nai5Bucket = seedLimit > 0 ? Math.round(seed * 10) / 10 : 0
         user.nai5BucketDay = todayStart
         user.nai5DepositTier = activeTier
       } else if (bucketDay < todayStart && activeTier > 0) {
         const limit = this.getTierBenefit(activeTier).nai5DailyLimit
         if (limit > 0) {
           const daysMissed = Math.max(1, Math.min(7, Math.round((todayStart - bucketDay) / 86400000)))
-          user.nai5Bucket = Math.min(limit * 7, (user.nai5Bucket || 0) + limit * daysMissed)
+          user.nai5Bucket = Math.round(Math.min(limit * 7, (user.nai5Bucket || 0) + limit * daysMissed) * 10) / 10
           user.nai5BucketDay = todayStart
           user.nai5DepositTier = activeTier
         }
@@ -1338,6 +1340,19 @@ export class MembershipSystem {
 
   isNai5Model(model?: string): boolean {
     return isNovelAIV5Model(modelMap[model] || model)
+  }
+
+  /** 是否为 V5 Medium（Effort=Medium）模型。 */
+  isNai5MediumModel(model?: string): boolean {
+    return isNovelAIV5MediumModel(modelMap[model] || model)
+  }
+
+  /**
+   * 该模型每次画图消耗的 nai5 免费次数权重。
+   * Medium 档一次只扣 0.6 次，其余模型为 1 次。
+   */
+  getNai5UsageWeight(model?: string): number {
+    return this.isNai5MediumModel(model) ? 0.6 : 1
   }
 
   /**
@@ -1460,26 +1475,33 @@ export class MembershipSystem {
 
   /**
    * 本次 nai5 任务中，超出会员免费额度、需要按 Anlas 计费的张数。
+   * - Medium 模型每次画图消耗 0.6 次免费额度（weight < 1）
    * - 周桶模式：可用 = 桶余额 − 并发预占，超出可用部分计费（点数支付的部分不扣桶）
    * - 旧模式：日限按用户生效等级取值；日限为 0 表示不额外限制，全部走 Opus 免费档（标准分辨率不扣点）
    */
-  getNai5OverageCount(userId: string, drawCount: number = 1): number {
+  getNai5OverageCount(userId: string, drawCount: number = 1, model?: string): number {
     if (!this.config.membershipEnabled) return 0
     const limit = this.getNai5DailyLimit(userId)
     if (limit <= 0 || drawCount <= 0) return 0
     if (!this.isActiveMember(userId)) return 0
 
+    const weight = this.getNai5UsageWeight(model)
+    // 剩余额度能覆盖多少张（按权重折算；防浮点误差加 1e-9）
+    const freeCountOf = (available: number) =>
+      Math.min(drawCount, Math.floor(available / weight + 1e-9))
+
     if (this.isNai5BucketEnabled()) {
       const bucket = this.userData[userId]?.nai5Bucket || 0
       const available = Math.max(0, bucket - (this.pendingNai5Usage[userId] || 0))
-      return Math.max(0, drawCount - available)
+      return drawCount - freeCountOf(available)
     }
     const used = this.getNai5DailyUsage(userId) + (this.pendingNai5Usage[userId] || 0)
-    return Math.min(drawCount, Math.max(0, used + drawCount - limit))
+    const remaining = Math.max(0, limit - used)
+    return drawCount - freeCountOf(remaining)
   }
 
   shouldChargeNai5Overage(userId: string, model?: string, drawCount: number = 1): boolean {
-    return this.isNai5Model(model) && this.getNai5OverageCount(userId, drawCount) > 0
+    return this.isNai5Model(model) && this.getNai5OverageCount(userId, drawCount, model) > 0
   }
 
   reserveNai5Usage(userId: string, count: number) {
@@ -1512,11 +1534,16 @@ export class MembershipSystem {
     this.userData[userId].dailyUsage += drawCount
     this.userData[userId].lastUsed = now
     if (this.isNai5Model(model)) {
-      const add = nai5Count ?? drawCount
-      this.userData[userId].nai5DailyUsage = (this.userData[userId].nai5DailyUsage || 0) + add
+      // Medium 模型按 0.6 权重折算消耗；保留 1 位小数避免浮点漂移
+      const weight = this.getNai5UsageWeight(model)
+      const add = Math.round((nai5Count ?? drawCount) * weight * 10) / 10
+      // 逐位对齐到 0.1 再运算，避免 0.6 连加的浮点误差（3.6000000000000005 之类）
+      const usage = Math.round(((this.userData[userId].nai5DailyUsage || 0) + add) * 10) / 10
+      this.userData[userId].nai5DailyUsage = usage
       if (this.isNai5BucketEnabled()) {
         // 周桶模式：从桶余额扣除（点数支付的次数从不扣桶）
-        this.userData[userId].nai5Bucket = Math.max(0, (this.userData[userId].nai5Bucket || 0) - add)
+        const balance = Math.max(0, Math.round(((this.userData[userId].nai5Bucket || 0) - add) * 10) / 10)
+        this.userData[userId].nai5Bucket = balance
       }
       this.releaseNai5Usage(userId, add)
     }

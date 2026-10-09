@@ -19,6 +19,7 @@ export const modelMap = {
   'nai-v4-5-full': 'nai-diffusion-4-5-full',
   'nai-v5-curated': 'nai-diffusion-5-curated',
   'nai-v5-full': 'nai-diffusion-5-full',
+  'nai-v5-full-medium': 'nai-diffusion-5-full-medium',
 } as const
 
 export const orientMap = {
@@ -554,6 +555,10 @@ export const Config = Schema.intersect([
         }),
         Schema.object({
           model: Schema.const('nai-v5-full'),
+          ...NAI4ParamConfig.dict,
+        }),
+        Schema.object({
+          model: Schema.const('nai-v5-full-medium'),
           ...NAI4ParamConfig.dict,
         }),
         Schema.object({ sampler: sampler.createSchema(sampler.nai) }),
