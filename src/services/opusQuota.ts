@@ -53,6 +53,28 @@ export function formatRefillTime(seconds: number | undefined): string {
   return remainMinutes ? `${hours} 小时 ${remainMinutes} 分钟` : `${hours} 小时`
 }
 
+/** 格式化账户剩余积分和订阅到期时间；缺失数据不视为零余额。 */
+export function formatSubscriptionBalance(subscription: Subscription): string {
+  const fixed = subscription.trainingStepsLeft?.fixedTrainingStepsLeft
+  const purchased = subscription.trainingStepsLeft?.purchasedTrainingSteps
+  const isBalance = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+  const total = isBalance(fixed) && isBalance(purchased) ? fixed + purchased : '未知'
+  const balance = `剩余积分（Anlas）：${total}（月赠：${isBalance(fixed) ? fixed : '未知'} | 购买：${isBalance(purchased) ? purchased : '未知'}）`
+
+  const expiresAt = subscription.expiresAt
+  const expiresDate = new Date(expiresAt * 1000)
+  let expiry = '未知'
+  if (typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt > 0 && !Number.isNaN(expiresDate.getTime())) {
+    expiry = expiresDate.toLocaleString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    }) + '（北京时间）'
+  }
+  return `${balance}\n订阅到期：${expiry}`
+}
+
 /** 格式化 /配额 要显示的 Opus 信息。 */
 export function formatOpusQuota(subscription: Subscription): string {
   if (subscription.tier !== 3) {
