@@ -43,8 +43,8 @@ commands:
       charRef: Activer la référence de personnage (modèles v4.5 uniquement)
       charRefMode: Définir le mode de référence (character, style, character&style, par défaut character&style)
       charRefFidelity: Définir la fidélité (0-1, par défaut 1)
-      preciseRef: "Activer la référence précise (modèles v4.5 uniquement), permet jusqu'à 6 images. Déduit 5 points supplémentaires par image."
-      preciseRefParams: "Définir les paramètres de référence précise (mettre entre guillemets, séparer les paramètres de l'image suivante avec un point-virgule, format : mode,strength,fidelity, par ex. : nai-4.5 -P -p \"cs,1,1;cs,0.5,0.5\") mode peut être cs (personnage+style), s (style uniquement), c (personnage uniquement), strength (0-1), fidelity (0-1), par défaut cs,1,1"
+      preciseRef: "Référence précise pour V4.5 et V5 Full / Curated. Jusqu’à 6 références, 5 points par référence et par image générée."
+      preciseRefParams: "Séparez les références par des points-virgules. V4.5 : mode,force,fidélité (0–1). V5 : mode,force (0–5), par défaut cs,1. c personnage, s style, o tenue, cs personnage et style avec la même tenue, co personnage avec la même tenue, cs-any personnage et style avec tenue libre. V5 ignore la fidélité."
 
 
     messages:
@@ -109,7 +109,9 @@ commands:
       charref-timeout: Délai dépassé, la référence de personnage a été annulée.
       charref-no-image: Aucune image détectée, la référence de personnage a été annulée.
       charref-error: Échec du traitement de la référence de personnage, veuillez réessayer.
-      charref-model-unsupported: La référence de personnage n'est prise en charge que par les modèles v4.5 (nai4-5 ou nai4-5c), veuillez changer de modèle et réessayer.
+      charref-model-unsupported: "La référence précise prend en charge nai4-5, nai4-5c, nai5 et nai5c."
+      preciseref-v5-inpaint: "V5 ne permet pas de combiner référence précise et retouche locale."
+      preciseref-v5-params: "Indiquez un groupe par référence dans l’ordre des images, par exemple \"s,2;o,1\". Modes : c, s, o, cs, co, cs-any. Force : 0–5."
       preciseref-wait-image: "Veuillez envoyer les images de référence précises dans les 60 secondes. Vous pouvez envoyer \"commencer\" pour terminer la collecte, ou \"annuler\" pour annuler la tâche, max 6 images."
       points-insufficient: "Points insuffisants (actuel : {0}, requis : {1}), impossible d'exécuter cette tâche."
       points-deducted: ", {0} points pré-déduits"

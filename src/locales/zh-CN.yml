@@ -36,8 +36,8 @@ commands:
       batch: 设置绘制批次大小
       chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。位置写法：网格 `@B3`，或自由坐标 `@0.35,0.62`（NAI 5 推荐，值域 0~1）
       inpaint: 启用局部重绘模式
-      preciseRef: 启用精准参考功能（仅支持 v4.5 模型），可以传6张图片。每张图片额外扣除5点数
-      preciseRefParams: 设置精准参考参数（用引号引用起来，下一张图片参数用分号隔开，格式：mode,strength,fidelity，例如：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）mode可选cs（角色+风格），s（仅风格），c（仅角色），strength（0-1），fidelity（0-1），默认cs,1,1
+      preciseRef: "精准参考（V4.5、V5 Full / Curated），最多 6 张，每张参考图每次出图加 5 点。"
+      preciseRefParams: "每张参考图一组，用分号隔开。V4.5 用 模式,强度,保真度（均为 0–1）。V5 用 模式,强度（0–5），默认 cs,1；c 角色、s 风格、o 服装、cs 角色和风格（偏好同款服装）、co 角色且偏好同款服装、cs-any 角色和风格且可换装。例：-P -p \"s,2;o,1\"。V5 忽略旧预设的保真度。"
       smea: 启用 SMEA
       smeaDyn: 启用 DYN
       scheduler: 设置调度器
@@ -115,7 +115,9 @@ commands:
       charref-timeout: 等待超时，角色参考已取消。
       charref-no-image: 未检测到图片，角色参考已取消。
       charref-error: 角色参考处理失败，请重试。
-      charref-model-unsupported: 角色参考功能仅支持 v4.5 模型（nai4-5 或 nai4-5c），请切换模型后重试。
+      charref-model-unsupported: "精准参考支持 nai4-5、nai4-5c、nai5 和 nai5c，请切换模型。"
+      preciseref-v5-inpaint: "NAI V5 暂不支持精准参考与局部重绘一起使用，请去掉其中一个选项。"
+      preciseref-v5-params: "请按图片顺序填写 -p 参数，每张最多一组，例如 \"s,2;o,1\"。模式可选 c、s、o、cs、co、cs-any，强度范围 0–5。"
       preciseref-wait-image: 请在60秒内发送精准参考图片。您可以发送"开始"结束收集，发送"取消"取消任务，最多6张。
       points-insufficient: 您的点数不足（当前 {0} 点，需要 {1} 点），无法执行此任务。
       points-deducted: ，预扣除 {0} 点数

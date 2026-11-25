@@ -1,5 +1,6 @@
 import { Context, Dict, Session } from 'koishi'
-import { Config } from './config'
+import { Config, modelMap } from './config'
+import * as v5Reference from './services/preciseReferenceV5'
 import { MembershipSystem } from './membershipSystem'
 
 export interface TaskQueueItem {
@@ -376,6 +377,11 @@ export class QueueSystem {
     if (optionsToSave._alignedHeight) delete optionsToSave._alignedHeight
     // 清理角色参考的 base64 数据（一张 1536x1024 的 PNG 可达数 MB）
     if (optionsToSave._charRefBase64) delete optionsToSave._charRefBase64
+    if (v5Reference.supports(modelMap[options.model || this.config.model])) {
+      for (const ref of optionsToSave._preciseRefImages || []) {
+        if (ref.url) delete ref.base64
+      }
+    }
     // 清理旧的扣费记录，重画时由外部统一管理扣费
     if (optionsToSave._deductedPoints) delete optionsToSave._deductedPoints
 

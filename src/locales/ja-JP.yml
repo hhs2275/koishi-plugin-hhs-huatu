@@ -43,8 +43,8 @@ commands:
       charRef: キャラクターリファレンスを有効にする (v4.5モデルのみ)
       charRefMode: リファレンスモードを設定 (character, style, character&style、デフォルト character&style)
       charRefFidelity: 忠実度を設定 (0-1、デフォルト1)
-      preciseRef: 精密リファレンスを有効にする (v4.5モデルのみ)、最大6枚の画像をアップロード可能。画像1枚につきさらに5ポイント消費
-      preciseRefParams: 精密リファレンスパラメータを設定（引用符で囲み、次の画像のパラメータはセミコロンで区切る。書式：mode,strength,fidelity、例：nai-4.5 -P -p "cs,1,1；cs,0.5,0.5"）modeはcs（キャラ+スタイル）、s（スタイルのみ）、c（キャラのみ）から選択、strength（0-1）、fidelity（0-1）、デフォルトcs,1,1
+      preciseRef: "精密リファレンス（V4.5、V5 Full / Curated）。最大6枚、出力1枚につき参照画像1枚あたり5ポイント。"
+      preciseRefParams: "画像ごとにセミコロンで区切ります。V4.5 は モード,強度,忠実度（0～1）。V5 は モード,強度（0～5）、初期値は cs,1。c キャラ、s 画風、o 衣装、cs キャラ＋画風（同じ衣装を優先）、co キャラ（同じ衣装を優先）、cs-any キャラ＋画風（衣装自由）。V5 では旧設定の忠実度は無視されます。"
 
     messages:
       queue-position: 現在キューに {0} 件のタスク、あなたには {1} 件のタスクが処理中です
@@ -108,7 +108,9 @@ commands:
       charref-timeout: タイムアウト、キャラクターリファレンスはキャンセルされました。
       charref-no-image: 画像が検出されませんでした、キャラクターリファレンスはキャンセルされました。
       charref-error: キャラクターリファレンスの処理に失敗しました。再試行してください。
-      charref-model-unsupported: キャラクターリファレンス機能はv4.5モデル（nai4-5 または nai4-5c）のみサポートしています。モデルを切り替えてから再試行してください。
+      charref-model-unsupported: "精密リファレンスには nai4-5、nai4-5c、nai5、nai5c が対応しています。"
+      preciseref-v5-inpaint: "V5 では精密リファレンスとインペイントを併用できません。"
+      preciseref-v5-params: "画像順に1枚につき1組を指定してください。例：\"s,2;o,1\"。モード c、s、o、cs、co、cs-any、強度 0～5。"
       preciseref-wait-image: 60秒以内に精密リファレンス画像を送信してください。「開始」を送信して収集を終了するか、「取消」を送信してタスクをキャンセルできます。最大6枚まで。
       points-insufficient: ポイントが不足しています（現在 {0} ポイント、必要 {1} ポイント）、このタスクを実行できません。
       points-deducted: "、{0} ポイントを前もって消費しました"

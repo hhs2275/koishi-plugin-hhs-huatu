@@ -1,6 +1,7 @@
 // 精准参考（Precise Reference）多步交互流程：收集参考图 -> 处理图片 -> 等待用户确认
 import { h, Session } from 'koishi'
 import { modelMap } from '../config'
+import * as v5Reference from '../services/preciseReferenceV5'
 import { Runtime } from '../runtime'
 import { download, modelSupportsCharacterReference, NetworkError, processCharacterReferenceImage } from '../utils'
 
@@ -15,8 +16,12 @@ export async function runPreciseRefInteraction(
         try {
           const currentModel = modelMap[options.model] || modelMap[config.model] || 'nai-diffusion-4-5-full'
 
-          if (!modelSupportsCharacterReference(currentModel)) {
+          const isV5 = v5Reference.supports(currentModel)
+          if (!isV5 && !modelSupportsCharacterReference(currentModel)) {
             return session.text('commands.novelai.messages.charref-model-unsupported')
+          }
+          if (isV5 && !v5Reference.settings(options.preciseRefParams)) {
+            return session.text('commands.novelai.messages.preciseref-v5-params')
           }
 
           let collectedImages: any[] = []
@@ -63,7 +68,7 @@ export async function runPreciseRefInteraction(
               if (collectedImages.length + failedCount >= maxLimit) break
               try {
                 const refImage = await download(ctx, u)
-                const processedRef = await processCharacterReferenceImage(refImage)
+                const processedRef = isV5 ? await v5Reference.prepare(refImage) : await processCharacterReferenceImage(refImage)
                 collectedImages.push({
                   base64: processedRef.base64,
                   url: u,
@@ -73,6 +78,7 @@ export async function runPreciseRefInteraction(
                 await session.send(`成功收集1张图片，已收集${collectedImages.length}张图片`)
               } catch (err) {
                 ctx.logger.error(err)
+                if (isV5) return session.text('commands.novelai.messages.charref-error')
                 failedCount++
                 await session.send(`1张图片收集失败，已收集${collectedImages.length}张图片`)
               }
@@ -83,6 +89,9 @@ export async function runPreciseRefInteraction(
             return session.text('commands.novelai.messages.charref-no-image')
           }
 
+          if (isV5 && !v5Reference.settings(options.preciseRefParams, collectedImages.length)) {
+            return session.text('commands.novelai.messages.preciseref-v5-params')
+          }
           ; (options as any)._preciseRefImages = collectedImages
             ; (options as any)._preciseRefParams = options.preciseRefParams
 
