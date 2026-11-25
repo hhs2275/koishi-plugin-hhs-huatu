@@ -3,7 +3,7 @@ import { Context } from 'koishi'
 import { Config } from '../config'
 import { NetworkError } from '../utils'
 import { Runtime } from '../runtime'
-import { fetchSubscription as fetchNovelAISubscription, formatOpusQuota } from '../services/opusQuota'
+import { fetchSubscription as fetchNovelAISubscription, formatOpusQuota, formatSubscriptionBalance } from '../services/opusQuota'
 
 export function registerAccount(ctx: Context, config: Config, runtime: Runtime) {
   const { getToken } = runtime
@@ -118,10 +118,10 @@ export function registerAccount(ctx: Context, config: Config, runtime: Runtime) 
     })
 
   // ========== Opus 免费额度查询命令 ==========
-  // 额度查询只返回百分比和恢复时间，不暴露 Token / Anlas 账户详情，允许群聊普通用户查询。
-  ctx.command('配额', '查询 NovelAI Opus 免费生成额度', { authority: 0 })
+  // 允许群聊普通用户查询额度、积分及到期时间；账户仅使用序号标识，不显示 Token。
+  ctx.command('配额', '查询 NovelAI 免费额度、剩余积分和订阅到期时间', { authority: 0 })
     .alias('opus配额')
-    .usage('查询 NovelAI Opus 免费 V5 生图额度、下次恢复时间和当前状态。')
+    .usage('查询每个账户的 NovelAI Opus 免费 V5 生图额度、下次恢复时间、当前状态、剩余 Anlas 积分（月赠/购买）和订阅到期时间（北京时间）。')
     .action(async ({ session }) => {
       if (!['token', 'login'].includes(config.type)) {
         return '❌ 此功能仅支持 Token 或账号密码登录方式'
@@ -130,7 +130,8 @@ export function registerAccount(ctx: Context, config: Config, runtime: Runtime) 
       const fetchQuota = async (token: string, label: string): Promise<string> => {
         try {
           const response = await fetchNovelAISubscription(ctx, config, token)
-          const lines = formatOpusQuota(response).split('\n').map(line => `  • ${line}`)
+          const lines = `${formatOpusQuota(response)}\n${formatSubscriptionBalance(response)}`
+            .split('\n').map(line => `  • ${line}`)
           return `📋 **${label}**:\n${lines.join('\n')}`
         } catch (err) {
           let errorMsg = '未知错误'
