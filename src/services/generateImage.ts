@@ -13,6 +13,18 @@ import { fetchSubscription, isNovelAIV5Model, isOpusQuotaExhausted } from './opu
 
 export async function generateImage(runtime: Runtime, session: Session<'authority'>, options: any, input: string) {
   try {
+    if (options.preciseRef) {
+      const model = modelMap[options.model || runtime.config.model]
+      const error = v5Reference.usageError(model, runtime.config.type, options.inpaint)
+      if (error) {
+        // 配置可能在任务排队期间变化，不能丢弃参考图后按普通生成执行。
+        if (runtime.config.pointsEnabled && options._deductedPoints > 0) {
+          await runtime.membershipSystem.refundPoints(session.userId, options._deductedPoints)
+          options._deductedPoints = 0
+        }
+        return session.text(error)
+      }
+    }
     return await generateImageInner(runtime, session, options, input)
   } finally {
     const leftover = (options as any)?._reservedNai5 || 0
@@ -393,6 +405,8 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
       }
     })()
 
+    // 单个任务的重画参考图只重建一次，迭代及安全重试使用同一份数据。
+    let v5ReferenceFields: Awaited<ReturnType<typeof v5Reference.requestFields>>
     const getPayload = async () => {
       switch (runtime.config.type) {
         case 'login':
@@ -564,8 +578,10 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
 
             // 处理精准参考功能 (Precise Reference)
             if (options.preciseRef && v5Reference.supports(model)) {
-              if (options.inpaint) throw new Error('V5 精准参考暂不支持局部重绘')
-              Object.assign(parameters, await v5Reference.requestFields(options._preciseRefImages, options._preciseRefParams, url => download(runtime.ctx, url)))
+              v5ReferenceFields ??= await v5Reference.requestFields(
+                options._preciseRefImages, options._preciseRefParams, url => download(runtime.ctx, url),
+              )
+              Object.assign(parameters, v5ReferenceFields)
             } else if (options._preciseRefImages && Array.isArray(options._preciseRefImages) && modelSupportsCharacterReference(model)) {
               for (const imgData of options._preciseRefImages) {
                 if (!imgData.base64 && imgData.url) {
@@ -993,15 +1009,18 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
           // 失败必须落日志：此前 429 只发给用户、不写日志，排查时完全看不到
           logGenerateFailure(runtime, session, options, input, err, { costMs, attempts: count + 1, model })
 
+          const errorMessage = err instanceof SessionError
+            ? session.text(err.path, err.param)
+            : handleError(runtime.ctx, session, err)
           // 生成失败，退还点数（nai5 预占由外层 finally 释放）
           const deductedPoints = (options as any)?._deductedPoints || 0
           if (deductedPoints > 0 && runtime.config.pointsEnabled) {
             await runtime.membershipSystem.refundPoints(session.userId, deductedPoints)
               ; (options as any)._deductedPoints = 0 // 避免重复退还
             const refundMsg = session.text('commands.novelai.messages.points-refunded', [deductedPoints])
-            return await session.send(handleError(runtime.ctx, session, err) + refundMsg)
+            return await session.send(errorMessage + refundMsg)
           }
-          return await session.send(handleError(runtime.ctx, session, err))
+          return await session.send(errorMessage)
         }
       }
 

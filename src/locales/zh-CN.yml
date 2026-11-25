@@ -36,8 +36,13 @@ commands:
       batch: 设置绘制批次大小
       chars: 设置角色提示词，用引号将角色提示词括起来，用分号 `;` 或 `；` 分隔角色。位置写法：网格 `@B3`，或自由坐标 `@0.35,0.62`（NAI 5 推荐，值域 0~1）
       inpaint: 启用局部重绘模式
-      preciseRef: "精准参考（V4.5、V5 Full / Curated），最多 6 张，每张参考图每次出图加 5 点。"
-      preciseRefParams: "每张参考图一组，用分号隔开。V4.5 用 模式,强度,保真度（均为 0–1）。V5 用 模式,强度（0–5），默认 cs,1；c 角色、s 风格、o 服装、cs 角色和风格（偏好同款服装）、co 角色且偏好同款服装、cs-any 角色和风格且可换装。例：-P -p \"s,2;o,1\"。V5 忽略旧预设的保真度。"
+      preciseRef: "精准参考：支持 nai4-5、nai4-5c，以及使用 NovelAI 官方令牌或登录后端的 nai5、nai5c。最多 6 张。V5 不可将 -P 和 -M 一起使用；请将 -P 和 -p 放在 -u 前面。"
+      preciseRefParams: >-
+        每张参考图按发送顺序对应一组可选参数。用 ; 或 ； 分组，用 , 或 ， 分隔字段。
+        V4.5 用 模式,强度,保真度（强度和保真度均为 0–1，默认 cs,1,1）。
+        V5 用 模式,强度（0–5），忽略旧写法的第三列。空组或省略的组默认 sco,1，末尾分号可省略。
+        V5 模式：sco 为角色和风格（偏好同款服装），sc/cs 为角色和风格（不偏好同款服装），co/oc 为角色（偏好同款服装），
+        c 为角色（不偏好同款服装），s 仅参考风格，o 仅参考服装。字母可任意排列但不可重复，so/os 无效。
       smea: 启用 SMEA
       smeaDyn: 启用 DYN
       scheduler: 设置调度器
@@ -115,9 +120,12 @@ commands:
       charref-timeout: 等待超时，角色参考已取消。
       charref-no-image: 未检测到图片，角色参考已取消。
       charref-error: 角色参考处理失败，请重试。
-      charref-model-unsupported: "精准参考支持 nai4-5、nai4-5c、nai5 和 nai5c，请切换模型。"
-      preciseref-v5-inpaint: "NAI V5 暂不支持精准参考与局部重绘一起使用，请去掉其中一个选项。"
-      preciseref-v5-params: "请按图片顺序填写 -p 参数，每张最多一组，例如 \"s,2;o,1\"。模式可选 c、s、o、cs、co、cs-any，强度范围 0–5。"
+      charref-model-unsupported: "当前模型不支持精准参考（包括 nai5m），请切换到 nai4-5、nai4-5c、nai5 或 nai5c。"
+      preciseref-v5-backend: "V5 精准参考只支持使用 NovelAI 官方令牌或登录后端。"
+      preciseref-v5-inpaint: "V5 不能同时使用精准参考（-P）和局部重绘（-M），请去掉其中一个选项。"
+      preciseref-v5-params: "-p 参数无效。请按图片顺序填写，每张图一组「模式,强度」，例如「sc,2;o,1」。可用 sco、sc/cs、co/oc、s、c、o（字母顺序不限），强度 0–5，默认 sco,1。"
+      preciseref-v5-extra-params: "-p 的参数组数多于参考图张数。请重新发送指令，减少参数组或补足参考图。"
+      preciseref-v5-redraw-image: "V5 参考图链接已过期或无法访问。请重新发送带 -P 的指令并上传参考图。"
       preciseref-wait-image: 请在60秒内发送精准参考图片。您可以发送"开始"结束收集，发送"取消"取消任务，最多6张。
       points-insufficient: 您的点数不足（当前 {0} 点，需要 {1} 点），无法执行此任务。
       points-deducted: ，预扣除 {0} 点数

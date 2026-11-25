@@ -43,8 +43,14 @@ commands:
       charRef: Charakter-Referenz aktivieren (nur v4.5 Modelle)
       charRefMode: Referenzmodus festlegen (character, style, character&style, Standard character&style)
       charRefFidelity: Wiedergabetreue festlegen (0-1, Standard 1)
-      preciseRef: "Präzise Referenz für V4.5 und V5 Full / Curated. Bis zu 6 Vorlagen, 5 Punkte je Vorlage und Ausgabebild."
-      preciseRefParams: "Vorlagen mit Semikolon trennen. V4.5: Modus,Stärke,Treue (0–1). V5: Modus,Stärke (0–5), Standard cs,1. c Figur, s Stil, o Outfit, cs Figur und Stil mit gleichem Outfit, co Figur mit gleichem Outfit, cs-any Figur und Stil mit beliebigem Outfit. V5 ignoriert die Treue."
+      preciseRef: "Präzise Referenz für nai4-5 und nai4-5c sowie für nai5 und nai5c mit offizieller NovelAI-Token- oder Login-Authentifizierung. Bis zu 6 Bilder. Bei V5 -P nicht mit -M kombinieren. -P und -p vor -u setzen."
+      preciseRefParams: >-
+        Eine optionale Gruppe pro Bild in Bildreihenfolge. Gruppen mit ; oder ； und Felder mit , oder ， trennen.
+        V4.5: Modus,Stärke,Treue (Stärke und Treue 0–1, Standard cs,1,1).
+        V5: Modus,Stärke (0–5), das dritte Feld älterer Einstellungen wird ignoriert. Leere oder fehlende Gruppen verwenden sco,1; ein abschließendes Semikolon ist optional.
+        V5-Modi: sco = Figur und Stil mit Outfit-Präferenz; sc/cs = Figur und Stil ohne Outfit-Präferenz;
+        co/oc = Figur mit Outfit-Präferenz; c = Figur ohne Outfit-Präferenz; s = nur Stil; o = nur Outfit.
+        Die Buchstabenreihenfolge ist beliebig, Wiederholungen sind nicht erlaubt. so/os ist ungültig.
 
 
     messages:
@@ -109,10 +115,13 @@ commands:
       charref-timeout: Timeout, Charakter-Referenz wurde abgebrochen.
       charref-no-image: Kein Bild erkannt, Charakter-Referenz wurde abgebrochen.
       charref-error: Verarbeitung der Charakter-Referenz fehlgeschlagen, bitte erneut versuchen.
-      charref-model-unsupported: "Präzise Referenz unterstützt nai4-5, nai4-5c, nai5 und nai5c."
-      preciseref-v5-inpaint: "V5 unterstützt keine präzise Referenz beim Inpainting."
-      preciseref-v5-params: "Je Vorlage eine Gruppe in Bildreihenfolge angeben, etwa \"s,2;o,1\". Modi: c, s, o, cs, co, cs-any. Stärke: 0–5."
-      preciseref-wait-image: "Bitte senden Sie präzise Referenzbilder innerhalb von 60 Sekunden. Sie können \"Start\" senden, um die Sammlung zu beenden, oder \"Abbrechen\", um die Aufgabe abzubrechen (max. 6 Bilder)."
+      charref-model-unsupported: "Dieses Modell unterstützt keine präzise Referenz (auch nai5m nicht). Verwenden Sie nai4-5, nai4-5c, nai5 oder nai5c."
+      preciseref-v5-backend: "Die präzise Referenz für V5 erfordert das offizielle NovelAI-Backend mit Token- oder Login-Authentifizierung."
+      preciseref-v5-inpaint: "V5 kann die präzise Referenz (-P) nicht mit Inpainting (-M) kombinieren. Entfernen Sie eine der Optionen."
+      preciseref-v5-params: "Ungültige -p-Parameter. Geben Sie in Bildreihenfolge je Bild eine Gruppe im Format Modus,Stärke an, etwa „sc,2;o,1“. Modi: sco, sc/cs, co/oc, s, c oder o (beliebige Buchstabenreihenfolge). Stärke: 0–5. Standard: sco,1."
+      preciseref-v5-extra-params: "Es gibt mehr -p-Gruppen als Referenzbilder. Senden Sie den Befehl erneut mit weniger Gruppen oder senden Sie genügend Referenzbilder."
+      preciseref-v5-redraw-image: "Ein V5-Referenzbildlink ist abgelaufen oder nicht verfügbar. Senden Sie den Befehl erneut mit -P und laden Sie die Referenzbilder erneut hoch."
+      preciseref-wait-image: "Bitte senden Sie präzise Referenzbilder innerhalb von 60 Sekunden. Sie können \"start\" senden, um die Sammlung zu beenden, oder \"cancel\", um die Aufgabe abzubrechen (max. 6 Bilder)."
       points-insufficient: "Unzureichende Punkte (aktuell: {0}, erforderlich: {1}), diese Aufgabe kann nicht ausgeführt werden."
       points-deducted: ", {0} Punkte vorab abgezogen"
       points-refunded: ", {0} Punkte erstattet"

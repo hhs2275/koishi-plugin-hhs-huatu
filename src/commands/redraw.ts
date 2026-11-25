@@ -1,8 +1,9 @@
 // 重画命令与快捷中间件：基于上次任务参数重复生成
 import { Context, h } from 'koishi'
-import { Config, orientMap } from '../config'
+import { Config, modelMap, orientMap } from '../config'
 import { handleError, Runtime } from '../runtime'
 import { calculateTaskPointsCost, getTaskDrawCount } from '../services/points'
+import { usageError as v5ReferenceUsageError } from '../services/preciseReferenceV5'
 
 export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
   const { membershipSystem, queueSystem, userData } = runtime
@@ -35,6 +36,15 @@ export function registerRedraw(ctx: Context, config: Config, runtime: Runtime) {
         if (!lastTask) {
           queueSystem.releaseRedrawLock() // 释放锁
           return '你还没有进行过任务'
+        }
+
+        if (lastTask.options?.preciseRef) {
+          const model = modelMap[lastTask.options.model || config.model]
+          const error = v5ReferenceUsageError(model, config.type, lastTask.options.inpaint)
+          if (error) {
+            queueSystem.releaseRedrawLock()
+            return session.text(error)
+          }
         }
 
         if (config.membershipEnabled) {

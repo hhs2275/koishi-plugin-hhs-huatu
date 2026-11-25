@@ -156,7 +156,7 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
     .option('chars', '-K <chars>')
     .option('inpaint', '-M', { hidden: thirdParty })
     .option('preciseRef', '-P', { hidden: thirdParty })  // 精准参考
-    .option('preciseRefParams', '-p <params:string>')  // 精准参考参数
+    .option('preciseRefParams', '-p <params:string>', { hidden: thirdParty })  // 精准参考参数
 
     .action(async ({ session, options, name }, ...prompts) => {
       if (isDuplicateCommand(session)) return
@@ -217,23 +217,17 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
       const now = Date.now()
       const userId = session.userId
 
-      // ========== 局部重绘交互流程（在进入队列之前完成） ==========
-      // ========== 局部重绘交互流程（在进入队列之前完成） ==========
-      if (options.inpaint && options.preciseRef && v5Reference.supports(modelMap[options.model || config.model])) {
-        return session.text('commands.novelai.messages.preciseref-v5-inpaint')
+      // 在任何上传交互前拦截不支持的 V5 组合（尤其是 -P -M）。
+      if (options.preciseRef) {
+        const error = v5Reference.usageError(modelMap[options.model || config.model], config.type, options.inpaint)
+        if (error) return session.text(error)
       }
       const inpaintResult = await runInpaintInteraction(runtime, session, options, input)
       if (inpaintResult.error) return inpaintResult.error
       input = inpaintResult.input
-      // ========== 局部重绘交互流程结束 ==========
-      // ========== 局部重绘交互流程结束 ==========
 
-      // ========== 精准参考交互流程（在进入队列之前完成） ==========
-      // ========== 精准参考交互流程（在进入队列之前完成） ==========
       const preciseRefError = await runPreciseRefInteraction(runtime, session, options)
       if (preciseRefError) return preciseRefError
-      // ========== 精准参考交互流程结束 ==========
-      // ========== 精准参考交互流程结束 ==========
 
       // 检查用户是否可以添加任务
       const canAddResult = queueSystem.canAddTask(userId)

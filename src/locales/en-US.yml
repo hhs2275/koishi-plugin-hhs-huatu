@@ -43,8 +43,14 @@ commands:
       charRef: Enable Character Reference (v4.5 models only)
       charRefMode: Set reference mode (character, style, character&style, default character&style)
       charRefFidelity: Set fidelity (0-1, default 1)
-      preciseRef: "Precise Reference for V4.5 and V5 Full / Curated. Up to 6 references, 5 extra points per reference per output."
-      preciseRefParams: "Separate references with semicolons. V4.5 accepts mode,strength,fidelity (0–1). V5 accepts mode,strength (0–5), default cs,1. c character, s style, o outfit, cs character and style with matching outfit, co character with matching outfit, cs-any character and style with any outfit. V5 ignores legacy fidelity."
+      preciseRef: "Precise Reference for nai4-5 and nai4-5c, or nai5 and nai5c with official NovelAI token or login authentication. Up to 6 images. On V5, do not combine -P with -M. Put -P and -p before -u."
+      preciseRefParams: >-
+        One optional group per image in order. Use ; or ； between groups and , or ， between fields.
+        V4.5: mode,strength,fidelity (strength and fidelity 0–1, default cs,1,1).
+        V5: mode,strength (0–5); a legacy third field is ignored. Empty or omitted groups use sco,1; a trailing semicolon is optional.
+        V5 modes: sco = character + style with Prefer same outfit on; sc/cs = character + style with it off;
+        co/oc = character with it on; c = character with it off; s = style only; o = outfit only.
+        Letters can be in any order without repeats; so/os is invalid.
 
     messages:
       queue-position: Currently {0} tasks in queue, you have {1} tasks being processed
@@ -110,9 +116,12 @@ commands:
       charref-timeout: Timeout, character reference has been cancelled.
       charref-no-image: No image detected, character reference has been cancelled.
       charref-error: Character reference processing failed, please try again.
-      charref-model-unsupported: "Precise Reference supports nai4-5, nai4-5c, nai5 and nai5c."
-      preciseref-v5-inpaint: "V5 cannot combine Precise Reference with inpainting."
-      preciseref-v5-params: "Enter one group per reference in image order, e.g. \"s,2;o,1\". Modes: c, s, o, cs, co, cs-any. Strength: 0–5."
+      charref-model-unsupported: "Precise Reference is not supported on this model (including nai5m). Use nai4-5, nai4-5c, nai5 or nai5c."
+      preciseref-v5-backend: "V5 Precise Reference requires the official NovelAI backend with token or login authentication."
+      preciseref-v5-inpaint: "V5 cannot combine Precise Reference (-P) with inpainting (-M). Remove one of these options."
+      preciseref-v5-params: "Invalid -p settings. Use one mode,strength group per image, e.g. ‘sc,2;o,1’. Modes: sco, sc/cs, co/oc, s, c or o (letter order does not matter). Strength: 0–5. Default: sco,1."
+      preciseref-v5-extra-params: "There are more -p groups than reference images. Resend the command with fewer groups or send enough reference images."
+      preciseref-v5-redraw-image: "A V5 reference image link has expired or is unavailable. Send the command again with -P and re-upload your reference images."
       preciseref-wait-image: "Please send precise reference images within 60 seconds. You can send \"start\" to finish collecting, or \"cancel\" to cancel the task, max 6 images."
       points-insufficient: "Insufficient points (current: {0}, required: {1}), cannot execute this task."
       points-deducted: ", {0} points pre-deducted"

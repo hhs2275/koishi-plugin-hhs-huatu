@@ -43,8 +43,13 @@ commands:
       charRef: 啟用角色參考功能（僅支援 v4.5 模型）
       charRefMode: 設定參考模式 (character, style, character&style，預設 character&style)
       charRefFidelity: 設定保真度 (0-1，預設 1)
-      preciseRef: "精準參考（V4.5、V5 Full / Curated），最多 6 張，每張參考圖每次出圖加 5 點。"
-      preciseRefParams: "每張參考圖一組，以分號分隔。V4.5 用 模式,強度,保真度（0–1）。V5 用 模式,強度（0–5），預設 cs,1。c 角色、s 風格、o 服裝、cs 角色與風格（偏好同款服裝）、co 角色且偏好同款服裝、cs-any 角色與風格且可換裝。V5 忽略舊預設的保真度。"
+      preciseRef: "精準參考：支援 nai4-5、nai4-5c，以及使用 NovelAI 官方權杖或登入後端的 nai5、nai5c。最多 6 張。V5 不可將 -P 與 -M 一起使用；請將 -P 和 -p 放在 -u 前面。"
+      preciseRefParams: >-
+        每張參考圖按傳送順序對應一組選填參數。用 ; 或 ； 分組，用 , 或 ， 分隔欄位。
+        V4.5 用 模式,強度,保真度（強度和保真度均為 0–1，預設 cs,1,1）。
+        V5 用 模式,強度（0–5），忽略舊寫法的第三欄。空白或省略的組別預設 sco,1，末尾分號可省略。
+        V5 模式：sco 為角色與風格（偏好同款服裝），sc/cs 為角色與風格（不偏好同款服裝），co/oc 為角色（偏好同款服裝），
+        c 為角色（不偏好同款服裝），s 僅參考風格，o 僅參考服裝。字母可任意排列但不可重複，so/os 無效。
     messages:
       queue-position: 目前佇列中有 {0} 個任務，你有 {1} 個任務正在處理
       queue-full: 目前等待任務已達到上限({0})，請稍後再試
@@ -110,10 +115,13 @@ commands:
       charref-timeout: 等待逾時，角色參考已取消。
       charref-no-image: 未偵測到圖片，角色參考已取消。
       charref-error: 角色參考處理失敗，請重試。
-      charref-model-unsupported: "精準參考支援 nai4-5、nai4-5c、nai5 和 nai5c，請切換模型。"
-      preciseref-v5-inpaint: "NAI V5 暫不支援同時使用精準參考與局部重繪。"
-      preciseref-v5-params: "請按圖片順序填寫參數，如 \"s,2;o,1\"。可用模式 c、s、o、cs、co、cs-any，強度 0–5。"
-      preciseref-wait-image: 請在60秒內發送精準參考圖片。您可以發送"開始"結束收集，發送"取消"取消任務，最多6張。
+      charref-model-unsupported: "目前模型不支援精準參考（包括 nai5m），請切換至 nai4-5、nai4-5c、nai5 或 nai5c。"
+      preciseref-v5-backend: "V5 精準參考僅支援使用 NovelAI 官方權杖或登入後端。"
+      preciseref-v5-inpaint: "V5 無法同時使用精準參考（-P）和局部重繪（-M），請移除其中一個選項。"
+      preciseref-v5-params: "-p 參數無效。請依圖片順序填寫，每張圖一組「模式,強度」，例如「sc,2;o,1」。可用 sco、sc/cs、co/oc、s、c、o（字母順序不限），強度 0–5，預設 sco,1。"
+      preciseref-v5-extra-params: "-p 的參數組數多於參考圖張數。請重新傳送指令，減少參數組或補足參考圖。"
+      preciseref-v5-redraw-image: "V5 參考圖連結已過期或無法存取。請重新傳送含 -P 的指令並上傳參考圖。"
+      preciseref-wait-image: 請在60秒內發送精準參考圖片。您可以發送"start"結束收集，發送"取消"取消任務，最多6張。
       points-insufficient: 您的點數不足（目前 {0} 點，需要 {1} 點），無法執行此任務。
       points-deducted: ，預扣除 {0} 點數
       points-refunded: ，已返還 {0} 點數  

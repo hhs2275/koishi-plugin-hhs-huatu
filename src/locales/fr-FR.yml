@@ -43,8 +43,14 @@ commands:
       charRef: Activer la référence de personnage (modèles v4.5 uniquement)
       charRefMode: Définir le mode de référence (character, style, character&style, par défaut character&style)
       charRefFidelity: Définir la fidélité (0-1, par défaut 1)
-      preciseRef: "Référence précise pour V4.5 et V5 Full / Curated. Jusqu’à 6 références, 5 points par référence et par image générée."
-      preciseRefParams: "Séparez les références par des points-virgules. V4.5 : mode,force,fidélité (0–1). V5 : mode,force (0–5), par défaut cs,1. c personnage, s style, o tenue, cs personnage et style avec la même tenue, co personnage avec la même tenue, cs-any personnage et style avec tenue libre. V5 ignore la fidélité."
+      preciseRef: "Référence précise pour nai4-5 et nai4-5c, ainsi que pour nai5 et nai5c avec l’authentification officielle NovelAI par jeton ou connexion. Jusqu’à 6 images. Sur V5, ne combinez pas -P et -M. Placez -P et -p avant -u."
+      preciseRefParams: >-
+        Un groupe facultatif par image, dans l’ordre d’envoi. Séparez les groupes avec ; ou ； et les champs avec , ou ，.
+        V4.5 : mode,force,fidélité (force et fidélité de 0 à 1, par défaut cs,1,1).
+        V5 : mode,force (0–5) ; le troisième champ hérité est ignoré. Les groupes vides ou omis utilisent sco,1 ; le point-virgule final est facultatif.
+        Modes V5 : sco = personnage et style en privilégiant la même tenue ; sc/cs = personnage et style sans cette préférence ;
+        co/oc = personnage en privilégiant la même tenue ; c = personnage sans cette préférence ; s = style seul ; o = tenue seule.
+        Les lettres peuvent être dans n’importe quel ordre, sans répétition ; so/os est invalide.
 
 
     messages:
@@ -109,10 +115,13 @@ commands:
       charref-timeout: Délai dépassé, la référence de personnage a été annulée.
       charref-no-image: Aucune image détectée, la référence de personnage a été annulée.
       charref-error: Échec du traitement de la référence de personnage, veuillez réessayer.
-      charref-model-unsupported: "La référence précise prend en charge nai4-5, nai4-5c, nai5 et nai5c."
-      preciseref-v5-inpaint: "V5 ne permet pas de combiner référence précise et retouche locale."
-      preciseref-v5-params: "Indiquez un groupe par référence dans l’ordre des images, par exemple \"s,2;o,1\". Modes : c, s, o, cs, co, cs-any. Force : 0–5."
-      preciseref-wait-image: "Veuillez envoyer les images de référence précises dans les 60 secondes. Vous pouvez envoyer \"commencer\" pour terminer la collecte, ou \"annuler\" pour annuler la tâche, max 6 images."
+      charref-model-unsupported: "Ce modèle ne prend pas en charge la référence précise (nai5m non plus). Utilisez nai4-5, nai4-5c, nai5 ou nai5c."
+      preciseref-v5-backend: "La référence précise sur V5 exige le service officiel NovelAI avec authentification par jeton ou connexion."
+      preciseref-v5-inpaint: "V5 ne permet pas de combiner référence précise (-P) et retouche locale (-M). Retirez l’une de ces options."
+      preciseref-v5-params: "Paramètres -p invalides. Indiquez un groupe mode,force par image dans l’ordre d’envoi, par exemple « sc,2;o,1 ». Modes : sco, sc/cs, co/oc, s, c ou o (l’ordre des lettres est libre). Force : 0–5. Par défaut : sco,1."
+      preciseref-v5-extra-params: "Il y a plus de groupes -p que d’images de référence. Relancez la commande avec moins de groupes ou envoyez assez d’images de référence."
+      preciseref-v5-redraw-image: "Le lien d’une image de référence V5 a expiré ou est indisponible. Relancez la commande avec -P et renvoyez les images de référence."
+      preciseref-wait-image: "Veuillez envoyer les images de référence précises dans les 60 secondes. Vous pouvez envoyer \"start\" pour terminer la collecte, ou \"cancel\" pour annuler la tâche, max 6 images."
       points-insufficient: "Points insuffisants (actuel : {0}, requis : {1}), impossible d'exécuter cette tâche."
       points-deducted: ", {0} points pré-déduits"
       points-refunded: ", {0} points remboursés"

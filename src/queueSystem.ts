@@ -366,8 +366,12 @@ export class QueueSystem {
 
   // 保存用户最后一次任务
   saveLastTask(userId: string, session: Session<'authority'>, options: any, input: string, pointsCost?: number): void {
-    // 1. 深拷贝 options
-    const optionsToSave = JSON.parse(JSON.stringify(options))
+    const isV5Reference = options.preciseRef && v5Reference.supports(modelMap[options.model || this.config.model])
+    // 从副本中移除 V5 参考图的 Base64 后再深拷贝，避免序列化大图。
+    const savedOptions = isV5Reference && options._preciseRefImages
+      ? { ...options, _preciseRefImages: options._preciseRefImages.map(({ base64, ...ref }) => ref.url ? ref : { ...ref, base64 }) }
+      : options
+    const optionsToSave = JSON.parse(JSON.stringify(savedOptions))
 
     // 2. 删除占内存的 Base64 数据
     // 因为我们已经存了 _originalUrl / _maskUrl / _charRefUrl，这些大字符串就不需要了
@@ -377,13 +381,12 @@ export class QueueSystem {
     if (optionsToSave._alignedHeight) delete optionsToSave._alignedHeight
     // 清理角色参考的 base64 数据（一张 1536x1024 的 PNG 可达数 MB）
     if (optionsToSave._charRefBase64) delete optionsToSave._charRefBase64
-    if (v5Reference.supports(modelMap[options.model || this.config.model])) {
-      for (const ref of optionsToSave._preciseRefImages || []) {
-        if (ref.url) delete ref.base64
-      }
-    }
-    // 清理旧的扣费记录，重画时由外部统一管理扣费
+    // 清理旧的扣费记录，重画时按当前状态重新计算。
     if (optionsToSave._deductedPoints) delete optionsToSave._deductedPoints
+    if (isV5Reference) {
+      delete optionsToSave._reservedNai5
+      delete optionsToSave._nai5FreeCount
+    }
 
     // 3. 保存瘦身后的数据到内存
     this.userLastTask[userId] = { session, options: optionsToSave, input, pointsCost: pointsCost || 0 }
