@@ -28,6 +28,8 @@ export const orientMap = {
   square: { height: 1024, width: 1024 },
   '竖图': { height: 1216, width: 832 },
   '横图': { height: 832, width: 1216 },
+  '窄竖图': { height: 1408, width: 640 },
+  '窄横图': { height: 640, width: 1408 },
   '方图': { height: 1024, width: 1024 }
 } as const
 
@@ -358,6 +360,8 @@ const NAI4ParamConfig = Schema.object({
 export const sizeNameMap = {
   '竖图': 'portrait',
   '横图': 'landscape',
+  '窄竖图': '窄竖图',
+  '窄横图': '窄横图',
   '方图': 'square',
   'portrait': 'portrait',
   'landscape': 'landscape',
