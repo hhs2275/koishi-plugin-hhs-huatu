@@ -3,6 +3,7 @@ import { Dict, h, omit, Quester, Session, SessionError, trimSlash } from 'koishi
 import { modelMap, orientMap, parseInput, sampler } from '../config'
 import { ImageData, NovelAI, StableDiffusionWebUI } from '../types'
 import { download, extractImages, getImageSize, forceDataPrefix, NetworkError, project, convertPosition, modelSupportsCharacters, parseCharacters, darkenImage, extractMaskWithAntiArtifact, modelSupportsCharacterReference, processCharacterReferenceImage, getVarietyPlusBase, computeVarietyPlusSigma } from '../utils'
+import * as v5Reference from './preciseReferenceV5'
 import AdmZip from 'adm-zip'
 import { resolve } from 'path'
 import { readFile } from 'fs/promises'
@@ -562,8 +563,10 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
             }
 
             // 处理精准参考功能 (Precise Reference)
-            // 仅支持 v4.5 模型
-            if (options._preciseRefImages && Array.isArray(options._preciseRefImages) && modelSupportsCharacterReference(model)) {
+            if (options.preciseRef && v5Reference.supports(model)) {
+              if (options.inpaint) throw new Error('V5 精准参考暂不支持局部重绘')
+              Object.assign(parameters, await v5Reference.requestFields(options._preciseRefImages, options._preciseRefParams, url => download(runtime.ctx, url)))
+            } else if (options._preciseRefImages && Array.isArray(options._preciseRefImages) && modelSupportsCharacterReference(model)) {
               for (const imgData of options._preciseRefImages) {
                 if (!imgData.base64 && imgData.url) {
                   try {
@@ -741,6 +744,9 @@ async function generateImageInner(runtime: Runtime, session: Session<'authority'
           if (runtime.config.debugLog) {
             runtime.ctx.logger.info(`NovelAI请求参数: ${JSON.stringify(payload, (key, value) => {
               // 避免记录过长的base64字符串
+              if (key === 'director_reference_images' && Array.isArray(value)) {
+                return value.map(image => `[base64 string length: ${image.length}]`)
+              }
               if (key === 'image' && typeof value === 'string') {
                 return `[base64 string length: ${value.length}]`
               }

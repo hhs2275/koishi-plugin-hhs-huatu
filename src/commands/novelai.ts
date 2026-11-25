@@ -1,6 +1,7 @@
 // novelai 主绘图命令（含快捷别名、选项解析）与 upscale 子命令
 import { Context, h, Session, trimSlash } from 'koishi'
-import { Config, models, orientMap, sampler, scheduler, upscalers } from '../config'
+import { Config, modelMap, models, orientMap, sampler, scheduler, upscalers } from '../config'
+import * as v5Reference from '../services/preciseReferenceV5'
 import { ImageData, StableDiffusionWebUI } from '../types'
 import { clampToNAILimit, download, extractImages, forceDataPrefix, NetworkError } from '../utils'
 import { Runtime } from '../runtime'
@@ -218,6 +219,9 @@ export function registerNovelai(ctx: Context, config: Config, runtime: Runtime) 
 
       // ========== 局部重绘交互流程（在进入队列之前完成） ==========
       // ========== 局部重绘交互流程（在进入队列之前完成） ==========
+      if (options.inpaint && options.preciseRef && v5Reference.supports(modelMap[options.model || config.model])) {
+        return session.text('commands.novelai.messages.preciseref-v5-inpaint')
+      }
       const inpaintResult = await runInpaintInteraction(runtime, session, options, input)
       if (inpaintResult.error) return inpaintResult.error
       input = inpaintResult.input

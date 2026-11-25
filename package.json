@@ -35,6 +35,7 @@
   "homepage": "https://github.com/hhs2275/koishi-plugin-hhs-huatu",
   "scripts": {
     "build": "atsc -b",
+    "test": "tsx --test tests/precise-reference.test.cjs",
     "docs:dev": "vitepress dev docs --open",
     "docs:build": "vitepress build docs",
     "docs:serve": "vitepress serve docs"
@@ -77,6 +78,7 @@
     "atsc": "^1.2.2",
     "koishi": "^4.18.7",
     "sass": "^1.85.1",
+    "tsx": "^4.20.0",
     "typescript": "^5.8.2",
     "vitepress": "1.0.0-rc.40"
   },
